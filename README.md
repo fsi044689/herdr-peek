@@ -110,3 +110,7 @@ Changes from the UI preserve other fields, comments and configuration symlinks. 
 The suite covers path/URL recognition, local HTTP fixtures, native handshake/failure simulation, settings, shell startup checks, and real prompt_toolkit input-pipe/mouse sequences. Native file previews were additionally inspected on macOS 26.2 with synthetic samples; installed Quick Look extensions affect results.
 
 A clean Python 3.11 source build and the primary Python 3.14 environment are checked separately. Platform mocks and input-pipe tests do not establish Linux desktop behavior, actual Herdr-client key delivery, or default-app rendering. Those acceptance checks remain explicit release gaps. See [the Chinese notes](README.zh-CN.md) for the detailed prior acceptance matrix.
+
+## License
+
+[MIT License](LICENSE). Copyright (c) 2026 sylar.
