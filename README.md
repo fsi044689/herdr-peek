@@ -4,6 +4,21 @@ Preview file paths and HTTP(S) links already visible in a Herdr terminal. Select
 
 [简体中文](README.zh-CN.md)
 
+## See it in action
+
+**Select the path right where it appears.** Open Peek, then click a highlighted file or link, or type its numbered hint.
+
+![Peek highlights file paths and a URL in sample terminal output, with numbered hints for instant selection](docs/screenshots/select-paths.png)
+
+**Choose how to preview.** Use **Ctrl+P** to switch between Herdr preview and macOS Quick Look. Your choice is remembered.
+
+| Stay inside Herdr | Use native macOS Quick Look |
+| --- | --- |
+| ![Herdr code preview with line numbers, syntax highlighting, and the Open in app Ctrl+O button](docs/screenshots/herdr-preview.png) | ![Actual macOS Quick Look panel rendering a sample local HTML document](docs/screenshots/macos-quicklook.png) |
+| Read code, search with **Ctrl+F**, or explicitly **Open in app / Ctrl+O**. | Preview supported documents using the system panel; **Esc** returns you to the terminal. |
+
+The terminal images are exported from Peek's real UI renderer with sample CLI output; the Quick Look image is a native macOS window screenshot. Terminal colors and system previews depend on your setup.
+
 ## Requirements and status
 
 - Herdr **0.9.5+**, Python **3.11+**, macOS or Linux.

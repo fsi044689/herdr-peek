@@ -2,6 +2,21 @@
 
 独立的 Herdr 文件与链接速览插件。当前版本 **0.1.0**，首个测试版本。
 
+## 看看效果
+
+**路径在哪，就在哪选。** 打开 Peek 后，直接点击高亮的文件或链接，也可以输入旁边的编号立即预览。
+
+![示例终端输出中的文件路径和 URL 被高亮，并带有可直接输入的编号](docs/screenshots/select-paths.png)
+
+**两种预览方式，自己选。** 按 **Ctrl+P** 切换 Herdr 内预览或 macOS 系统速览，选择会自动保存。
+
+| 直接在 Herdr 里看 | 使用 macOS 系统 Quick Look |
+| --- | --- |
+| ![Herdr 内代码预览，显示行号、语法高亮和默认应用打开 Ctrl+O 按钮](docs/screenshots/herdr-preview.png) | ![真实 macOS Quick Look 窗口正在渲染本地 HTML 示例文档](docs/screenshots/macos-quicklook.png) |
+| 阅读代码、**Ctrl+F** 搜索，或按 **Ctrl+O** 用默认应用打开。 | 使用系统面板预览支持的文档，**Esc** 返回终端。 |
+
+终端示例图由 Peek 的真实界面渲染器配合示例 CLI 输出导出；Quick Look 图为真实 macOS 窗口截图。终端配色及系统预览效果随本机配置而异。
+
 ## 怎么用
 
 1. 从目标 CLI 窗格调用 Herdr Peek action，或先按下方示例配置快捷键。插件不会自动安装快捷键；示例为 **prefix+u**，实际前缀由你的 Herdr 配置决定。
