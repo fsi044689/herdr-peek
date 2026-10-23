@@ -287,9 +287,10 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
         cut = uri.index('%')+4
         await self.launch(native=True, text=uri[:cut]+'\n  '+uri[cut:], columns=180)
         self.assertEqual(self.ui.screen.hits, [Reference(self.file)])
-        with patch.object(self.ui.native, 'open') as native:
+        with patch.object(self.ui.native, 'wait_closed'), patch.object(self.ui.native, 'open') as native:
             await self.click(3, 1)
-            await asyncio.wait_for(asyncio.shield(self.task), 1)
+            await asyncio.sleep(.15)
+            self.assertFalse(self.task.done())
             native.assert_called_once_with(self.file)
 
     async def test_cli_wrapped_encoded_file_uri_digit_opens_herdr_body(self):
@@ -364,9 +365,194 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
                 self.ui.open_in_default()
                 opener.assert_called_once_with(self.file)
                 self.pipe.send_text('\x1b')
-                await asyncio.wait_for(asyncio.shield(self.task), 1)
+                await asyncio.sleep(.6)
+                self.assertFalse(self.task.done())
+                self.assertIsNone(self.ui.current)
+                self.assertFalse(self.ui.busy)
         finally:
             release.set()
+
+    async def test_escape_returns_to_hints_and_opens_second_file_without_restart(self):
+        other = self.root/'second.py'
+        other.write_text('second preview')
+        await self.launch(text=f'`{self.file}`\n`{other}`', columns=140)
+        self.ui.app.ttimeoutlen = .01
+        original_grid = self.ui.grid
+        self.pipe.send_text('1')
+        await asyncio.sleep(.1)
+        self.assertEqual(self.ui.current.path, self.file)
+        self.pipe.send_text('\x1b')
+        await asyncio.sleep(.1)
+        self.assertFalse(self.task.done(), 'Esc from preview must keep Peek running')
+        self.assertIsNone(self.ui.current)
+        self.assertIs(self.ui.grid, original_grid)
+        self.pipe.send_text('2')
+        await asyncio.sleep(.1)
+        self.assertEqual(self.ui.current.path, other)
+        self.assertEqual(self.ui.body.text, 'second preview')
+        self.pipe.send_text('q')
+        await asyncio.sleep(.1)
+        self.assertFalse(self.task.done())
+        self.assertIsNone(self.ui.current)
+        self.pipe.send_text('\x1b')
+        await asyncio.wait_for(asyncio.shield(self.task), 1)
+
+    async def test_preview_button_returns_to_selection(self):
+        await self.launch()
+        self.ui.app.ttimeoutlen = .01
+        self.pipe.send_text('1')
+        await asyncio.sleep(.1)
+        screen = self.ui.app.renderer._last_screen
+        header = ''.join(screen.data_buffer[0][x].char for x in range(80))
+        self.assertIn('返回', header)
+        x = next(x for x in range(80) if screen.data_buffer[0][x].char == '返')
+        await self.click(x, 0)
+        self.assertFalse(self.task.done())
+        self.assertIsNone(self.ui.current)
+        self.pipe.send_text('1')
+        await asyncio.sleep(.1)
+        self.assertEqual(self.ui.current.path, self.file)
+        self.pipe.send_text('\x11')
+        await asyncio.wait_for(asyncio.shield(self.task), 1)
+
+    async def test_native_close_returns_to_selection_for_another_file(self):
+        other = self.root/'second.txt'
+        other.write_text('second preview')
+        await self.launch(native=True, text=f'`{self.file}`\n`{other}`', columns=140)
+        self.ui.app.ttimeoutlen = .01
+        closed = threading.Event()
+        class PreviewProcess:
+            def wait(self):
+                closed.wait(3)
+                return 0
+            def poll(self):
+                return 0 if closed.is_set() else None
+            def terminate(self):
+                closed.set()
+        def open_preview(native, path):
+            native.process = PreviewProcess()
+        try:
+            with patch.object(NativePreview, 'open', autospec=True, side_effect=open_preview) as native:
+                self.pipe.send_text('1')
+                await asyncio.sleep(.1)
+                self.assertFalse(self.task.done(), 'Native preview must keep Peek alive behind the panel')
+                self.assertTrue(self.ui.busy)
+                closed.set()
+                await asyncio.sleep(.15)
+                self.assertFalse(self.task.done())
+                self.assertFalse(self.ui.busy)
+                self.assertFalse(self.ui.native_opened)
+                self.assertIsNone(self.ui.current)
+                closed.clear()
+                self.pipe.send_text('2')
+                await asyncio.sleep(.1)
+                self.assertEqual(native.call_count, 2)
+                self.assertEqual(native.call_args.args[1], other)
+                closed.set()
+                await asyncio.sleep(.15)
+                self.pipe.send_text('\x1b')
+                await asyncio.wait_for(asyncio.shield(self.task), 1)
+        finally:
+            closed.set()
+
+    async def test_return_during_web_load_cannot_overwrite_next_file(self):
+        await self.launch(text=f'https://example.com/slow\n`{self.file}`', columns=140)
+        release = threading.Event()
+        try:
+            with patch('herdr_peek.peek.read_url', side_effect=lambda _: (release.wait(3) and 'old web body', False)):
+                self.pipe.send_text('1')
+                await asyncio.sleep(.1)
+                self.assertTrue(self.ui.busy)
+                self.pipe.send_text('q2')
+                await asyncio.sleep(.15)
+                self.assertEqual(self.ui.current.path, self.file)
+                self.assertEqual(self.ui.body.text, self.file.read_text())
+                release.set()
+                await asyncio.sleep(.15)
+                self.assertEqual(self.ui.body.text, self.file.read_text())
+                self.assertFalse(self.ui.busy)
+        finally:
+            release.set()
+
+    async def test_return_cancels_old_default_app_feedback_before_next_web_load(self):
+        await self.launch(text=f'`{self.file}`\nhttps://example.com/slow', columns=140)
+        release = threading.Event()
+        try:
+            with patch('herdr_peek.peek.open_default', side_effect=lambda _: release.wait(3)), \
+                    patch('herdr_peek.peek.read_url', side_effect=lambda _: (release.wait(3) and 'new web body', False)):
+                self.pipe.send_text('1')
+                await asyncio.sleep(.1)
+                self.pipe.send_text('\x0f')
+                await asyncio.sleep(.1)
+                self.assertTrue(self.ui.busy)
+                self.pipe.send_text('q2')
+                await asyncio.sleep(.1)
+                self.assertTrue(self.ui.busy, 'Cancelled opener must not clear the next preview loading state')
+                self.assertEqual(self.ui.current.url, 'https://example.com/slow')
+                release.set()
+                await asyncio.sleep(.15)
+                self.assertEqual(self.ui.body.text, 'new web body')
+                self.assertNotIn('已提交', self.ui.status)
+        finally:
+            release.set()
+
+    async def test_return_cancels_copy_feedback_for_previous_preview(self):
+        other = self.root/'second.py'
+        other.write_text('second preview')
+        await self.launch(text=f'`{self.file}`\n`{other}`', columns=140)
+        release = threading.Event()
+        try:
+            with patch('herdr_peek.peek.clipboard_write', side_effect=lambda _: release.wait(3)) as copy:
+                self.pipe.send_text('1')
+                await asyncio.sleep(.1)
+                self.ui.copy_path()
+                await asyncio.sleep(.1)
+                self.pipe.send_text('q2')
+                await asyncio.sleep(.1)
+                release.set()
+                await asyncio.sleep(.15)
+                copy.assert_called_once_with(str(self.file))
+                self.assertEqual(self.ui.current.path, other)
+                self.assertNotIn('已复制', self.ui.status)
+        finally:
+            release.set()
+
+    async def test_escape_exits_search_before_returning_to_hints(self):
+        await self.launch()
+        self.ui.app.ttimeoutlen = .01
+        self.pipe.send_text('1')
+        await asyncio.sleep(.1)
+        self.pipe.send_text('\x06needle')
+        await asyncio.sleep(.1)
+        self.assertIs(self.ui.app.layout.current_control, self.ui.search.control)
+        self.pipe.send_text('\x1b')
+        await asyncio.sleep(.1)
+        self.assertIsNotNone(self.ui.current)
+        self.assertIs(self.ui.app.layout.current_control, self.ui.body.control)
+        self.pipe.send_text('\x1b')
+        await asyncio.sleep(.1)
+        self.assertIsNone(self.ui.current)
+        self.assertFalse(self.task.done())
+
+    async def test_ctrl_q_terminates_native_panel_while_waiting_for_close(self):
+        await self.launch(native=True)
+        closed = threading.Event()
+        class PreviewProcess:
+            def wait(self):
+                closed.wait(3)
+                return 0
+            def poll(self):
+                return 0 if closed.is_set() else None
+            def terminate(self):
+                closed.set()
+        self.ui.native.process = PreviewProcess()
+        with patch.object(self.ui.native, 'open'):
+            self.pipe.send_text('1')
+            await asyncio.sleep(.1)
+            self.assertTrue(self.ui.native_opened)
+            self.pipe.send_text('\x11')
+            await asyncio.wait_for(asyncio.shield(self.task), 1)
+            self.assertTrue(closed.is_set())
 
     async def test_file_type_matrix_herdr_content_or_explicit_unsupported(self):
         from preview_fixtures import make_files
@@ -417,9 +603,10 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
 
     async def test_url_digit_uses_native_explicit_argument_without_file_reads(self):
         await self.launch(native=True, text='打开 https://example.com/page?q=x#part')
-        with patch.object(self.ui.native, 'open') as native, patch('herdr_peek.peek.read_file') as file_read, patch('herdr_peek.peek.read_url') as web_read:
+        with patch.object(self.ui.native, 'wait_closed'), patch.object(self.ui.native, 'open') as native, patch('herdr_peek.peek.read_file') as file_read, patch('herdr_peek.peek.read_url') as web_read:
             self.pipe.send_text('1')
-            await asyncio.wait_for(asyncio.shield(self.task), 1)
+            await asyncio.sleep(.15)
+            self.assertFalse(self.task.done())
             native.assert_called_once_with('https://example.com/page?q=x#part', url=True)
             file_read.assert_not_called()
             web_read.assert_not_called()
@@ -469,7 +656,10 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
                     self.ui.toggle_mode()
                     save.assert_not_called()
                 self.pipe.send_text('\x1b')
-                await asyncio.wait_for(asyncio.shield(self.task), 1)
+                await asyncio.sleep(.6)
+                self.assertFalse(self.task.done())
+                self.assertIsNone(self.ui.current)
+                self.assertFalse(self.ui.busy)
         finally:
             release.set()
 
@@ -507,7 +697,10 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
             rpc.assert_not_called()
             cli.assert_not_called()
         self.pipe.send_text('\x1b')
-        await asyncio.wait_for(asyncio.shield(self.task), 1)
+        await asyncio.sleep(.6)
+        self.assertFalse(self.task.done())
+        self.assertIsNone(self.ui.current)
+        self.assertFalse(self.ui.busy)
 
     async def test_click_on_wrapped_continuation_uses_complete_path(self):
         logical = '修改了 `中文 note.py:3`\n日志'
@@ -535,9 +728,10 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
         file.write_text('first\nsecond\nthird\n')
         text = f'修改 [文件]({file}:3:8) 已完成'
         await self.launch(native=True, text=text, columns=180)
-        with patch.object(self.ui.native, 'open') as native:
+        with patch.object(self.ui.native, 'wait_closed'), patch.object(self.ui.native, 'open') as native:
             await self.click(get_cwidth(text[:text.index(str(file))])+4, 0)
-            await asyncio.wait_for(asyncio.shield(self.task), 1)
+            await asyncio.sleep(.15)
+            self.assertFalse(self.task.done())
             native.assert_called_once_with(file)
 
     async def test_number_selects_second_uri_target_and_keeps_line_anchor(self):
@@ -560,13 +754,15 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(.1)
             copy.assert_called_once_with(str(self.file))
 
-    async def test_native_success_closes_selection_layer(self):
+    async def test_native_close_keeps_selection_layer_running(self):
         await self.launch(native=True)
-        with patch.object(self.ui.native, 'open') as native:
+        with patch.object(self.ui.native, 'wait_closed'), patch.object(self.ui.native, 'open') as native:
             self.pipe.send_text('\t\r')
-            await asyncio.wait_for(asyncio.shield(self.task), 1)
+            await asyncio.sleep(.15)
+            self.assertFalse(self.task.done())
             native.assert_called_once_with(self.file)
-            self.assertTrue(self.ui.native_opened)
+            self.assertFalse(self.ui.native_opened)
+            self.assertFalse(self.ui.busy)
             self.assertIsNone(self.ui.current)
 
     async def test_digit_opens_file_without_enter(self):

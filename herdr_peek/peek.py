@@ -83,6 +83,9 @@ class NativePreview:
             except ProcessLookupError:
                 pass
 
+    def wait_closed(self):
+        self.process.wait()
+
     def open(self, path, *, url=False):
         if not native_quicklook_available():
             raise PeekError(tr("系统速览不可用"))
@@ -157,6 +160,7 @@ class PeekUI:
         self.index, self.busy, self.native_opened = -1, False, False
         self.typed = ""
         self.native = NativePreview()
+        self.preview_tasks = set()
         try:
             set_language(load_language())
             self.mode = load_mode()
@@ -183,12 +187,12 @@ class PeekUI:
         self.open_button = Button(tr("默认应用打开") + " Ctrl+O", handler=self.open_in_default, width=22)
         self.mode_button = Button(tr("切换预览"), handler=self.toggle_mode, width=14)
         self.copy_button = Button(tr("复制地址"), handler=self.copy_path, width=14)
-        self.close_button = Button(tr("关闭"), handler=lambda: self.app.exit(), width=9)
+        self.back_button = Button(tr("返回"), handler=self.back, width=9)
         self.language_button = Button(self.language_label(), handler=self.toggle_language, width=9)
         self.preview = HSplit([
             VSplit([Label(" Herdr Peek", style="class:title"),
                     self.open_button, self.mode_button, self.copy_button,
-                    self.language_button, self.close_button], height=1),
+                    self.language_button, self.back_button], height=1),
             self.path, self.body, self.search,
             Window(FormattedTextControl(lambda: " " + self.status), height=1, style="class:status"),
         ])
@@ -205,11 +209,13 @@ class PeekUI:
             stop_search()
 
         @keys.add("escape", filter=~is_searching, eager=True)
-        @keys.add("c-q")
         @keys.add("q", filter=~is_searching)
+        def back(event):
+            self.back()
+
+        @keys.add("c-q")
         def close(event):
-            if not self.native_opened:
-                self.native.cancel()
+            self.native.cancel()
             event.app.exit()
 
         @keys.add("c-p", filter=~is_searching)
@@ -349,7 +355,7 @@ class PeekUI:
             self.open_button.text = tr('默认应用打开') + ' Ctrl+O'
             self.mode_button.text = tr('切换预览')
             self.copy_button.text = tr('复制地址')
-            self.close_button.text = tr('关闭')
+            self.back_button.text = tr('返回')
             self.language_button.text = self.language_label()
             self.status = tr('界面语言已保存。')
         self.app.invalidate()
@@ -371,11 +377,36 @@ class PeekUI:
                 self.status = str(exc)
         self.app.invalidate()
 
+    def create_preview_task(self, coroutine):
+        task = self.app.create_background_task(coroutine)
+        self.preview_tasks.add(task)
+        task.add_done_callback(self.preview_tasks.discard)
+
+    def show_selection(self):
+        self.current, self.lexer = None, None
+        self.busy, self.native_opened = False, False
+        self.typed = ""
+        self.native = NativePreview()
+        self.status = self.screen.snapshot["notice"]
+        self.app.layout.focus(self.control)
+        self.app.invalidate()
+
+    def back(self):
+        if self.current is None:
+            self.native.cancel()
+            self.app.exit()
+            return
+        for task in tuple(self.preview_tasks):
+            task.cancel()
+        self.preview_tasks.clear()
+        self.native.cancel()
+        self.show_selection()
+
     def choose(self, reference):
         if self.busy or not self.size_matches():
             return
         self.busy = True
-        self.app.create_background_task(self.open(reference))
+        self.create_preview_task(self.open(reference))
 
     async def open(self, reference):
         notice = ""
@@ -386,7 +417,8 @@ class PeekUI:
                 else:
                     await off_thread(lambda: self.native.open(reference.path))
                 self.native_opened = True
-                self.app.exit()
+                await off_thread(self.native.wait_closed)
+                self.show_selection()
                 return
             except PeekError as exc:
                 notice = tr("{error}，已改用 Herdr 预览。 ", error=exc)
@@ -409,12 +441,12 @@ class PeekUI:
             row = max(0, min(((None if is_url else reference.line) or 1) - 1, self.body.document.line_count - 1))
             self.body.buffer.cursor_position = self.body.document.translate_row_col_to_index(row, 0)
             self.status = notice + (tr("仅显示前 2 MiB。 ") if truncated else "") + (
-                tr("网页正文预览；需 JavaScript 或登录的页面可能不完整。Ctrl+F 搜索 · Esc 关闭")
-                if is_url else tr("Ctrl+F 搜索 · Esc / q 关闭"))
+                tr("网页正文预览；需 JavaScript 或登录的页面可能不完整。Ctrl+F 搜索 · Esc 返回")
+                if is_url else tr("Ctrl+F 搜索 · Esc / q 返回 · Ctrl+Q 退出"))
         except (PeekError, OSError, asyncio.TimeoutError) as exc:
             reason = str(exc) or tr("网页读取超时")
             self.body.text = tr("此网页暂时无法在 Herdr 内预览。\n\n{reason}" if is_url else "此文件暂时无法在 Herdr 内预览。\n\n{reason}", reason=reason)
-            self.status = notice + tr("可用默认应用打开（Ctrl+O） · 复制地址 · Esc 关闭")
+            self.status = notice + tr("可用默认应用打开（Ctrl+O） · 复制地址 · Esc 返回")
         self.busy = False
         self.app.invalidate()
 
@@ -429,25 +461,27 @@ class PeekUI:
                     await off_thread(lambda: open_default(reference.url, url=True))
                 else:
                     await off_thread(lambda: open_default(reference.path))
-                self.status = tr("已提交系统默认应用打开请求。Esc 可关闭预览。")
+                self.status = tr("已提交系统默认应用打开请求。Esc 可返回选择。")
             except PeekError as exc:
                 self.status = tr("默认应用打开请求未确认：{error}", error=exc)
             finally:
-                self.busy = False
-                self.app.invalidate()
-        self.app.create_background_task(launch())
+                if asyncio.current_task() in self.preview_tasks:
+                    self.busy = False
+                    self.app.invalidate()
+        self.create_preview_task(launch())
 
     def copy_path(self):
         if self.current is None:
             return
+        reference = self.current
         async def copy():
             try:
-                await off_thread(lambda: clipboard_write(self.current.url if isinstance(self.current, URLReference) else str(self.current.path)))
-                self.status = tr("已复制完整链接。") if isinstance(self.current, URLReference) else tr("已复制完整路径（不含终端显示折行）。")
+                await off_thread(lambda: clipboard_write(reference.url if isinstance(reference, URLReference) else str(reference.path)))
+                self.status = tr("已复制完整链接。") if isinstance(reference, URLReference) else tr("已复制完整路径（不含终端显示折行）。")
             except PeekError as exc:
                 self.status = str(exc)
             self.app.invalidate()
-        self.app.create_background_task(copy())
+        self.create_preview_task(copy())
 
 
 def main():
@@ -461,5 +495,4 @@ def main():
     try:
         ui.app.run()
     finally:
-        if not ui.native_opened:
-            ui.native.cancel()
+        ui.native.cancel()

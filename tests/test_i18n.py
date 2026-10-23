@@ -145,7 +145,7 @@ class LanguageUITests(unittest.IsolatedAsyncioTestCase):
         set_language('en')
         await self.launch()
         self.assertEqual(get_language(), 'zh')
-        self.assertEqual(self.ui.close_button.text, '关闭')
+        self.assertEqual(self.ui.back_button.text, '返回')
 
     async def test_footer_mouse_switches_language(self):
         await self.launch(columns=120)
@@ -154,7 +154,7 @@ class LanguageUITests(unittest.IsolatedAsyncioTestCase):
         x = next(x for x in range(120) if rendered.data_buffer[row][x].char == '中')
         await self.click(x, row)
         self.assertEqual(load_language(), 'zh')
-        self.assertEqual(self.ui.close_button.text, '关闭')
+        self.assertEqual(self.ui.back_button.text, '返回')
 
     async def test_preview_button_and_search_prompt_switch_language(self):
         await self.launch(columns=100)
@@ -176,7 +176,7 @@ class LanguageUITests(unittest.IsolatedAsyncioTestCase):
             self.pipe.send_text('\x0c')
             await asyncio.sleep(.15)
         self.assertEqual(get_language(), 'en')
-        self.assertEqual(self.ui.close_button.text, 'Close')
+        self.assertEqual(self.ui.back_button.text, 'Back')
         self.assertIn('read-only', self.ui.status)
         with patch('herdr_peek.peek.save_language') as save:
             self.ui.busy = True
@@ -200,8 +200,8 @@ class LanguageUITests(unittest.IsolatedAsyncioTestCase):
         await self.launch(columns=80)
         self.pipe.send_text('1')
         await asyncio.sleep(.15)
-        for labels in (('Open in app Ctrl+O', 'Preview mode', 'Copy address', '中文', 'Close'),
-                       ('默认应用打开 Ctrl+O', '切换预览', '复制地址', 'English', '关闭')):
+        for labels in (('Open in app Ctrl+O', 'Preview mode', 'Copy address', '中文', 'Back'),
+                       ('默认应用打开 Ctrl+O', '切换预览', '复制地址', 'English', '返回')):
             screen = self.ui.app.renderer._last_screen
             header = ''.join(screen.data_buffer[0][x].char for x in range(80))
             for label in labels:

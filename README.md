@@ -15,7 +15,7 @@ Preview file paths and HTTP(S) links already visible in a Herdr terminal. Select
 | Stay inside Herdr | Use native macOS Quick Look |
 | --- | --- |
 | ![Herdr code preview with line numbers, syntax highlighting, and the Open in app Ctrl+O button](docs/screenshots/herdr-preview.png) | ![Actual macOS Quick Look panel rendering a sample local HTML document](docs/screenshots/macos-quicklook.png) |
-| Read code, search with **Ctrl+F**, or explicitly **Open in app / Ctrl+O**. | Preview supported documents using the system panel; **Esc** returns you to the terminal. |
+| Read code, search with **Ctrl+F**, or explicitly **Open in app / Ctrl+O**. | Preview supported documents using the system panel; **Esc** returns to path selection, ready for the next file. |
 
 The terminal images are exported from Peek's real UI renderer with sample CLI output; the Quick Look image is a native macOS window screenshot. Terminal colors and system previews depend on your setup.
 
@@ -75,7 +75,7 @@ Validate and reload your Herdr configuration after editing it. `prefix` means yo
 3. **Ctrl+P** or the clickable mode label switches between macOS Quick Look and the Herdr popup. The choice is saved. System Quick Look is available only on local macOS with the native helper installed.
 4. In Herdr preview, **Ctrl+F** searches. **Open in app / Ctrl+O** hands the file to its system-associated application, or the URL to the default browser. Unsupported formats also offer this button; apps open only on your explicit request.
 5. **Ctrl+L** or **中文 / English** changes the plugin language and remembers it. English is the default; no OS-language detection is performed.
-6. **Esc / q** closes Peek. In the macOS system panel, use Esc, Space, or Cmd+W.
+6. In Herdr preview, **Esc / q** or **Back** returns to the same path selection so you can preview another file. In macOS Quick Look, close the system panel with Esc, Space, or Cmd+W to return to selection. **Esc / q** from selection exits Peek; **Ctrl+Q** exits directly from the plugin UI. While searching, the first Esc leaves search.
 
 Copy address copies the real complete path or original URL, without terminal display wraps. Number labels use 1–9, 0, then letters; `q` is reserved for closing. With many targets, labels become equal-length multiple-character codes; finish the entire code to select a target, or use Backspace to correct it.
 
@@ -92,7 +92,7 @@ Herdr reads at most 2 MiB. Web preview has an 8-second UI deadline; it does not 
 
 ## Recognition and interaction limits
 
-- Peek captures a static snapshot of the visible tab. It marks files from the originating pane only; the underlying CLI keeps running. Esc returns to live output. It does not scroll the terminal or read history.
+- Peek captures a static snapshot of the visible tab. It marks files from the originating pane only; the underlying CLI keeps running. Esc from path selection returns to live output. Returning from a preview keeps the same snapshot and numbered hints; it does not rescan new output. Peek does not scroll the terminal or read history.
 - Paths must resolve to existing local files, relative to the originating pane's working directory. Quoted paths, spaces, Unicode, Markdown targets, shell-escaped spaces, local `file://` URIs, and line suffixes such as `:12:3` or `#L12` are supported.
 - Terminal soft wraps are restored using Herdr selection data. CLI-inserted hard wraps are joined only when their structure and an existing file support that interpretation. Indented `file://` continuations may split a percent escape. Ambiguous paths are left unmarked; hard-wrapped `#L` anchors can lose the line number.
 - URLs are recognized without network requests. Only explicit HTTP(S) URLs without embedded credentials are accepted. Hard wraps require a complete explicit wrapper and indented continuation. Use spaces, angle brackets or Markdown to separate URLs from adjoining prose.
