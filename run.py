@@ -2,7 +2,7 @@
 import sys
 
 if sys.version_info < (3, 11):
-    print('Herdr Peek requires Python 3.11+. Rebuild with PYTHON=python3.11 sh bootstrap.sh.', file=sys.stderr)
+    print('Herdr QuickView requires Python 3.11+. Rebuild with PYTHON=python3.11 sh bootstrap.sh.', file=sys.stderr)
     sys.exit(1)
 
 from herdr_peek.i18n import set_language, tr
@@ -30,5 +30,5 @@ if __name__ == "__main__":
     try:
         main()
     except (PeekError, ImportError) as exc:
-        print(f"Herdr Peek: {exc}", file=sys.stderr)
+        print(f"Herdr QuickView: {exc}", file=sys.stderr)
         sys.exit(1)

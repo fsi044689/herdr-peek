@@ -1,5 +1,5 @@
 id = "sylar.herdr-peek"
-name = "Herdr Peek"
+name = "Herdr QuickView"
 version = "0.1.0"
 min_herdr_version = "0.9.5"
 description = "Preview file paths and HTTP(S) links in place; choose macOS Quick Look or a Herdr popup."
@@ -10,13 +10,13 @@ command = ["sh", "bootstrap.sh"]
 
 [[actions]]
 id = "peek"
-title = "Herdr Peek"
+title = "Herdr QuickView"
 contexts = ["workspace", "pane"]
 command = ["sh", "-c", "exec sh \"$HERDR_PLUGIN_ROOT/launch.sh\" peek"]
 
 [[panes]]
 id = "peek"
-title = "Herdr Peek"
+title = "Herdr QuickView"
 placement = "popup"
 width = "100%"
 height = "100%"

@@ -3,7 +3,7 @@ set -eu
 [ "$(uname -s)" = Darwin ] || exit 0
 cd "$(dirname "$0")/.."
 if ! xcrun --find clang >/dev/null 2>&1; then
-    echo "Herdr Peek: macOS build tools not found; this installation only supports Herdr preview." >&2
+    echo "Herdr QuickView: macOS build tools not found; this installation only supports Herdr preview." >&2
     exit 0
 fi
 app=".native/Herdr Peek.app/Contents"

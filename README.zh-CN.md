@@ -1,10 +1,12 @@
-# Herdr Peek
+# Herdr QuickView
 
 独立的 Herdr 文件与链接速览插件。当前版本 **0.1.0**，首个测试版本。
 
+
+Herdr QuickView 原名 Herdr Peek。稳定插件 ID `sylar.herdr-peek`、action `peek` 和设置目录继续保留，已有快捷键与偏好无需迁移。原 `v0.1.0` 标签保留旧名版本；下方默认分支安装包含本轮更新。
 ## 看看效果
 
-**路径在哪，就在哪选。** 打开 Peek 后，直接点击高亮的文件或链接，也可以输入旁边的编号立即预览。
+**路径在哪，就在哪选。** 打开 QuickView 后，直接点击高亮的文件或链接，也可以输入旁边的编号立即预览。
 
 ![示例终端输出中的文件路径和 URL 被高亮，并带有可直接输入的编号](docs/screenshots/select-paths.png)
 
@@ -15,11 +17,11 @@
 | ![Herdr 内代码预览，显示行号、语法高亮和默认应用打开 Ctrl+O 按钮](docs/screenshots/herdr-preview.png) | ![真实 macOS Quick Look 窗口正在渲染本地 HTML 示例文档](docs/screenshots/macos-quicklook.png) |
 | 阅读代码、**Ctrl+F** 搜索，或按 **Ctrl+O** 用默认应用打开。 | 使用系统面板预览支持的文档，**Esc** 返回路径选择，继续查看下一个文件。 |
 
-终端示例图由 Peek 的真实界面渲染器配合示例 CLI 输出导出；Quick Look 图为真实 macOS 窗口截图。终端配色及系统预览效果随本机配置而异。
+终端示例图由 QuickView 的真实界面渲染器配合示例 CLI 输出导出；Quick Look 图为真实 macOS 窗口截图。终端配色及系统预览效果随本机配置而异。
 
 ## 怎么用
 
-1. 从目标 CLI 窗格调用 Herdr Peek action，或先按下方示例配置快捷键。插件不会自动安装快捷键；示例为 **prefix+u**，实际前缀由你的 Herdr 配置决定。
+1. 从目标 CLI 窗格调用 Herdr QuickView action，或先按下方示例配置快捷键。插件不会自动安装快捷键；示例为 **prefix+u**，实际前缀由你的 Herdr 配置决定。
 2. 可定位的路径或链接显示整段蓝绿色底色和黄色 **[1] [2] … [a] [b]** 编号框；空白足够时加外边框。**直接点击原文或编号框**，也可直接输入编号打开，**不必回车**。Tab / Shift+Tab 切换、Enter 打开仍可用。
 3. 底栏显示当前预览方式。**Ctrl+P** 或点击底栏的模式区域切换 **macOS 系统 / Herdr 浮窗**，自动保存；正文页也有「切换预览」按钮，返回原文后下次选择时生效。macOS 默认系统速览，其他系统仅 Herdr 浮窗。
 4. 系统模式打开真正的 **QLPreviewPanel**，确认面板可见且获得焦点后保留后台选择层；关闭系统面板后回到选择层，启动失败回退 Herdr。Herdr 模式在当前浮窗显示文件文本或网页可读正文。正文页点击「默认应用打开」或按 **Ctrl+O**，才把当前文件交给系统关联应用，或把 URL 交给默认浏览器；不支持预览的格式也有此入口。
@@ -38,7 +40,7 @@ Herdr 预览页左侧是可折叠的**文件／链接列表**，右侧是原预�
 - 默认英文，不检测操作系统语言，不依赖终端的 LANG/LC_*；macOS 和 Linux 行为一致。
 - 按 **Ctrl+L**，或点击选择层底栏/正文页顶部的 **中文 / English** 切换；按钮和后续提示立即使用所选语言，选择会自动保存，下次打开继续沿用。加载中忽略切换，保存失败保留原语言。
 - 与预览模式保存在同一个 `config.toml`，语言字段为 `language = "en"` 或 `language = "zh"`；写入保留其他设置、注释和配置软链接。
-- 翻译覆盖插件自身的按钮、搜索、状态和错误提示。文件内容、网页原文、路径及外部程序返回的错误保留原文；系统 Quick Look 的工具栏语言由 macOS 管理。Herdr 静态入口和浮窗标题统一使用品牌名 Herdr Peek。
+- 翻译覆盖插件自身的按钮、搜索、状态和错误提示。文件内容、网页原文、路径及外部程序返回的错误保留原文；系统 Quick Look 的工具栏语言由 macOS 管理。Herdr 静态入口和浮窗标题统一使用品牌名 Herdr QuickView。
 
 ## 原位选择的实现与限制
 
@@ -73,7 +75,7 @@ preview_mode = "macos" # 或 "herdr"
 - 正文页和不支持格式的提示页都有「默认应用打开」按钮，快捷键 **Ctrl+O**；文件使用完整真实绝对路径，不包含行号，URL 使用完整原始地址。
 - macOS 文件调用系统 `open`，URL 使用 `open -u` 明确交给 URL scheme 的默认应用；Linux 使用 `xdg-open`。相当于交给系统关联程序处理，不承诺所有格式都有可用的关联应用。
 - 只有主动点击或按 Ctrl+O 才唤起应用。请求成功后保留预览页；返回码只表示系统接受请求，不表示应用已经显示内容。失败、缺少打开器或等待超时会提示未确认，不自动重试。
-- 后台执行且隔离标准输入和标准输出，错误输出用临时文件收集，避免子程序继承管道导致误等应用退出；限制等待 8 秒；进行中忽略重复操作，Esc 可返回选择层，Ctrl+Q 直接退出 Peek；返回后旧操作的反馈不会覆盖下一份预览。检测到 SSH 时不尝试唤起远端服务器 GUI，提示复制地址到本机。
+- 后台执行且隔离标准输入和标准输出，错误输出用临时文件收集，避免子程序继承管道导致误等应用退出；限制等待 8 秒；进行中忽略重复操作，Esc 可返回选择层，Ctrl+Q 直接退出 QuickView；返回后旧操作的反馈不会覆盖下一份预览。检测到 SSH 时不尝试唤起远端服务器 GUI，提示复制地址到本机。
 
 ## 平台
 
@@ -83,6 +85,8 @@ preview_mode = "macos" # 或 "herdr"
 - Herdr 内预览上限 2 MiB，只支持 UTF-8 文本和代码，暂不渲染图片、PDF、压缩包等二进制内容。macOS 格式支持由系统 Quick Look 决定。
 - 临时画面交接文件权限为 0600，读取后立即删除；不长期保存终端文本。
 
+侧栏中文件显示“文件名＋所在目录”，URL 显示“站点＋页面路径”。长文本从中间省略，保留首尾。右侧地址最多换行显示三行，点击地址后可按 **Home / End**（Mac 可按 Fn+← / Fn+→）查看开头/末尾；Herdr 前缀不拦截时也可用 Ctrl+A / Ctrl+E；“复制地址”始终复制完整值。列表仅用方向键选中时，导航行单独显示“选中”地址；按 Enter 才切换预览。
+
 ## 安装与开发
 
 需要 Herdr >= 0.9.5、Python >= 3.11，支持 macOS/Linux。
@@ -90,7 +94,7 @@ preview_mode = "macos" # 或 "herdr"
 从 GitHub 安装：
 
 ```sh
-herdr plugin install fsi044689/herdr-peek
+herdr plugin install fsi044689/herdr-quickview
 ```
 
 安装后按下方示例配置入口快捷键，插件不会自动添加快捷键。
@@ -99,7 +103,7 @@ herdr plugin install fsi044689/herdr-peek
 
 ```sh
 sh bootstrap.sh # 自动寻找 Python 3.11+；也可 PYTHON=python3.11 sh bootstrap.sh
-herdr plugin link /absolute/path/to/herdr-peek
+herdr plugin link /absolute/path/to/herdr-quickview
 ```
 
 依赖只安装到插件自己的 `.venv`，安装需要联网获取 Python 依赖。Python 版本不满足时会在建环境前明确失败；再次构建会重建版本过旧或损坏的插件运行环境。如果按快捷键没有界面，请在源码目录重新执行 `sh bootstrap.sh`。macOS 安装时使用 Xcode Command Line Tools 编译并本地签名原生宿主，产物在 `.native/Herdr Peek.app`；缺少编译工具时仅使用 Herdr 内预览。Linux 跳过此构建。插件 ID 为 `sylar.herdr-peek`，action 为 `peek`。
@@ -109,7 +113,7 @@ herdr plugin link /absolute/path/to/herdr-peek
 key = "prefix+u"
 type = "plugin_action"
 command = "sylar.herdr-peek.peek"
-description = "Herdr Peek · 文件速览"
+description = "Herdr QuickView · 文件速览"
 ```
 
 修改快捷键后运行 `herdr config check`、`herdr server reload-config`，无需重启 Herdr。

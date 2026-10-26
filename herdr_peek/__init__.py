@@ -1,1 +1,1 @@
-"""Herdr Peek."""
+"""Herdr QuickView."""

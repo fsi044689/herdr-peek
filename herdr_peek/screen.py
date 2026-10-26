@@ -317,7 +317,7 @@ class Screen:
         rendered = screen_text(self.source["ansi"])
         mapping = align_text(snapshot["text"], rendered)
         if mapping is None:
-            raise PeekError(tr("画面与路径位置不一致，请重新打开 Herdr Peek"))
+            raise PeekError(tr("画面与路径位置不一致，请重新打开 Herdr QuickView"))
         for reference, start, end in target_spans(snapshot["text"], cwd):
             positions = [mapping[i] for i in range(start, end) if i in mapping]
             if not positions:

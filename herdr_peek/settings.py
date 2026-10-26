@@ -30,7 +30,7 @@ def read_settings():
     except FileNotFoundError:
         return {}
     except (OSError, ValueError) as exc:
-        raise PeekError(tr('无法读取 Peek 设置：{error}', error=exc)) from exc
+        raise PeekError(tr('无法读取 QuickView 设置：{error}', error=exc)) from exc
     return data
 
 

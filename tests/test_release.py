@@ -107,7 +107,7 @@ class ReleaseUITests(unittest.IsolatedAsyncioTestCase):
         config_path().write_text('[broken')
         set_language('en')
         await self.launch(columns=80)
-        self.assertIn('Cannot read Peek settings', self.rendered_footer())
+        self.assertIn('Cannot read QuickView settings', self.rendered_footer())
         self.assertEqual(config_path().read_text(), '[broken')
 
     async def test_resize_warning_takes_priority_over_selected_address(self):

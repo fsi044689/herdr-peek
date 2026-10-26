@@ -12,7 +12,7 @@ if [ -z "$python" ]; then
     done
 fi
 if [ -z "$python" ] || ! "$python" -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null; then
-    echo 'Herdr Peek requires Python 3.11+. Install it, then retry; or run PYTHON=python3.11 sh bootstrap.sh.' >&2
+    echo 'Herdr QuickView requires Python 3.11+. Install it, then retry; or run PYTHON=python3.11 sh bootstrap.sh.' >&2
     exit 1
 fi
 if [ -d .venv ] && { [ ! -x .venv/bin/python ] || ! .venv/bin/python -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null; }; then

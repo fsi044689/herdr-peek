@@ -11,6 +11,7 @@ import threading
 import time
 from dataclasses import asdict
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from prompt_toolkit import Application
 from prompt_toolkit.data_structures import Point
@@ -19,6 +20,7 @@ from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.application import get_app
 from prompt_toolkit.layout import ConditionalContainer, DynamicContainer, Float, FloatContainer, HSplit, Layout, VSplit, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
+from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.layout.margins import ScrollbarMargin
 from prompt_toolkit.mouse_events import MouseButton, MouseEventType
 from prompt_toolkit.lexers import DynamicLexer, PygmentsLexer
@@ -131,6 +133,30 @@ class NativePreview:
                 self.process.stdout.close()
 
 
+def middle_ellipsis(text, width, *, tail_width=0):
+    if get_cwidth(text) <= width:
+        return text
+    available = max(0, width - 1)
+    right = min(available, max(available // 2, tail_width))
+    left = available - right
+    head, tail = [], []
+    occupied = 0
+    for char in text:
+        size = get_cwidth(char)
+        if occupied + size > left:
+            break
+        head.append(char)
+        occupied += size
+    occupied = 0
+    for char in reversed(text):
+        size = get_cwidth(char)
+        if occupied + size > right:
+            break
+        tail.append(char)
+        occupied += size
+    return ''.join(head) + '…' + ''.join(reversed(tail))
+
+
 class SidebarControl(FormattedTextControl):
     def __init__(self, ui):
         self.ui = ui
@@ -148,7 +174,7 @@ class SidebarControl(FormattedTextControl):
 
 def launch_peek():
     if os.environ.get("HERDR_ENV") != "1":
-        raise PeekError(tr("请从 Herdr 打开 Herdr Peek"))
+        raise PeekError(tr("请从 Herdr 打开 Herdr QuickView"))
     context = Context.load()
     screen = capture_screen(context)
     payload = {"context": {**asdict(context), "cwd": str(context.cwd)}, "screen": screen}
@@ -194,7 +220,8 @@ class PeekUI:
         self.body = TextArea(read_only=True, scrollbar=True, line_numbers=True, wrap_lines=True,
                              search_field=self.search, focus_on_click=True,
                              lexer=DynamicLexer(lambda: self.lexer))
-        self.path = TextArea(read_only=True, height=1, wrap_lines=False, focus_on_click=True)
+        self.path = TextArea(read_only=True, height=Dimension(min=1, max=3), wrap_lines=True,
+                             dont_extend_height=True, focus_on_click=True)
         self.control = FormattedTextControl(self.fragments, focusable=True, show_cursor=False)
         self.canvas = Window(self.control, wrap_lines=False, always_hide_cursor=True)
         self.grid = self.screen.cells(*snapshot["size"])
@@ -221,7 +248,7 @@ class PeekUI:
         self.back_button = Button(tr("返回"), handler=self.back, width=9)
         self.language_button = Button(self.language_label(), handler=self.toggle_language, width=9)
         self.preview = HSplit([
-            VSplit([Label(" Herdr Peek", style="class:title"),
+            VSplit([Label(" Herdr QuickView", style="class:title"),
                     self.open_button, self.mode_button, self.copy_button,
                     self.language_button, self.back_button], height=1),
             Window(FormattedTextControl(self.preview_navigation), height=1, style="class:status"),
@@ -354,9 +381,21 @@ class PeekUI:
                 self.toggle_sidebar()
             else:
                 return NotImplemented
-        help_text = tr(" ↑/↓ 选择 · Enter 打开 · Tab 正文") if self.app.layout.current_control == self.sidebar_control else tr(" Ctrl+J/K 切换 · Tab 列表/正文")
-        return [("reverse", tr(" [文件列表 · Ctrl+T] ") if self.sidebar_visible else tr(" [展开列表 · Ctrl+T] "), toggle),
-                ("", help_text)]
+        label = tr(" [文件列表 · Ctrl+T] ") if self.sidebar_visible else tr(" [展开列表 · Ctrl+T] ")
+        control = self.app.layout.current_control
+        if control == self.sidebar_control:
+            help_text = tr(" ↑/↓ 选择 · Enter 打开 · Tab 正文")
+            reference = self.targets[self.sidebar_index]
+            address = reference.url if isinstance(reference, URLReference) else str(reference.path) + (f":{reference.line}" if reference.line else "")
+            prefix = help_text + tr(" · 选中：")
+            remaining = get_app().output.get_size().columns - get_cwidth(label + prefix)
+            if remaining >= 6:
+                help_text = prefix + middle_ellipsis(address, remaining)
+        elif control == self.path.control:
+            help_text = tr(" 地址 · Home/End 查看首尾 · Tab 列表/正文")
+        else:
+            help_text = tr(" Ctrl+J/K 切换 · Tab 列表/正文 · 点击地址查看全文")
+        return [("reverse", label, toggle), ("", help_text)]
 
     def toggle_sidebar(self):
         self.sidebar_visible = not self.sidebar_visible
@@ -368,11 +407,21 @@ class PeekUI:
         result = []
         width = max(16, min(34, get_app().output.get_size().columns // 3)) - 1
         for position, reference in enumerate(self.targets):
+            suffix = ""
             if isinstance(reference, URLReference):
-                name = address = reference.url
+                parts = urlsplit(reference.url)
+                name = f"{parts.scheme}://{parts.netloc}"
+                address = reference.url[len(name):]
+                if not address.startswith('/'):
+                    address = '/' + address
             else:
-                name = reference.path.name + (f":{reference.line}" if reference.line else "")
-                address = str(reference.path.relative_to(self.context.cwd)) if reference.path.is_relative_to(self.context.cwd) else str(reference.path)
+                line_suffix = f":{reference.line}" if reference.line else ""
+                name = reference.path.name + line_suffix
+                suffix = reference.path.suffix + line_suffix
+                parent = reference.path.parent
+                address = str(parent.relative_to(self.context.cwd)) if parent.is_relative_to(self.context.cwd) else str(parent)
+                if address == '.':
+                    address = './'
             active = reference == self.current
             focused = self.app.layout.current_control == self.sidebar_control and position == self.sidebar_index
             style = "class:sidebar-selected" if focused else "class:sidebar-current" if active else ""
@@ -381,16 +430,9 @@ class PeekUI:
                     self.open_sidebar(position, focus_list=True)
                 else:
                     return NotImplemented
-            for line in (f"{'▸' if active else ' '} {name}", f"  {address}"):
-                if get_cwidth(line) > width:
-                    characters, occupied = [], 0
-                    for char in line:
-                        size = get_cwidth(char)
-                        if occupied + size > width - 1:
-                            break
-                        characters.append(char)
-                        occupied += size
-                    line = "".join(characters) + "…"
+            for prefix, text, tail_width in ((f"{'▸' if active else ' '} ", name, get_cwidth(suffix)),
+                                             ("  ", address, 0)):
+                line = prefix + middle_ellipsis(text, width - get_cwidth(prefix), tail_width=tail_width)
                 result.append((style, line + " " * (width - get_cwidth(line)), click))
                 result.append(("", "\n"))
         return result[:-1]
@@ -417,13 +459,13 @@ class PeekUI:
     def footer(self):
         same_size = self.size_matches()
         if not same_size:
-            message = tr("窗口大小已变化，请 Esc 退出后重新打开 Herdr Peek。")
+            message = tr("窗口大小已变化，请 Esc 退出后重新打开 Herdr QuickView。")
         elif self.busy:
             message = tr("正在打开预览… Esc 可取消")
         elif not self.selectable:
             message = tr("当前画面未找到文件或 HTTP(S) 链接。Esc 返回，滚到可见区域后重试。")
         else:
-            message = tr("Herdr Peek · 点击 / 输入编号直达 · Tab / Enter · Esc 取消 · {count} 处", count=len(self.selectable))
+            message = tr("Herdr QuickView · 点击 / 输入编号直达 · Tab / Enter · Esc 取消 · {count} 处", count=len(self.selectable))
             if self.typed:
                 message += tr(" · 已输入 {keys}", keys=self.typed)
         if self.status and not self.busy and same_size:
