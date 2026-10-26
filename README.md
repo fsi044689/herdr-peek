@@ -1,6 +1,6 @@
 # Herdr Peek
 
-Preview file paths and HTTP(S) links already visible in a Herdr terminal. Select them **where they appear**, then open macOS Quick Look or an in-place Herdr text preview. No Git repository, project scan, file list, or new tab is required.
+Preview file paths and HTTP(S) links already visible in a Herdr terminal. Select them **where they appear**, then open macOS Quick Look or an in-place Herdr text preview. No Git repository, project scan, project file list, or new tab is required.
 
 [简体中文](README.zh-CN.md)
 
@@ -72,10 +72,14 @@ Validate and reload your Herdr configuration after editing it. `prefix` means yo
 
 1. Bring the desired file path or HTTP(S) URL into view, then open Peek.
 2. Recognized targets receive a colored highlight and a numbered or lettered badge. **Click the original text/badge, or type its label** to preview immediately. Tab / Shift+Tab and Enter also work.
-3. **Ctrl+P** or the clickable mode label switches between macOS Quick Look and the Herdr popup. The choice is saved. System Quick Look is available only on local macOS with the native helper installed.
+3. **Ctrl+P** or the clickable mode label switches between macOS Quick Look and the Herdr popup. The choice is saved and applies when you next select a target in the terminal snapshot. System Quick Look is available only on local macOS with the native helper installed.
 4. In Herdr preview, **Ctrl+F** searches. **Open in app / Ctrl+O** hands the file to its system-associated application, or the URL to the default browser. Unsupported formats also offer this button; apps open only on your explicit request.
 5. **Ctrl+L** or **中文 / English** changes the plugin language and remembers it. English is the default; no OS-language detection is performed.
 6. In Herdr preview, **Esc / q** or **Back** returns to the same path selection so you can preview another file. In macOS Quick Look, close the system panel with Esc, Space, or Cmd+W to return to selection. **Esc / q** from selection exits Peek; **Ctrl+Q** exits directly from the plugin UI. While searching, the first Esc leaves search.
+
+Herdr preview includes a collapsible **file/link sidebar** on the left. Click an item to preview it on the right, or use **Ctrl+J** for next and **Ctrl+K** for previous. **Ctrl+T** shows/hides the list; **Tab / Shift+Tab** moves between the list and preview. In the list, **↑ / ↓** selects without loading, and **Enter** opens the selection. The mouse wheel moves the list selection and focuses the list, ready for Enter. The list starts folded for a single target or an initial window narrower than 72 columns; Ctrl+T can still expand it.
+
+The sidebar reuses this snapshot's visible targets, deduplicated by file/line or URL. It does not scan a project or preload files. Rapid preview changes wait 120 ms before reading only the final selection. Switching inside Herdr preview stays in Herdr, including after Quick Look fails; use Back to choose another target in the snapshot with the saved macOS mode. Switching does not undo an already-issued Open in app or copy request; it stops feedback from the old preview.
 
 Copy address copies the real complete path or original URL, without terminal display wraps. Number labels use 1–9, 0, then letters; `q` is reserved for closing. With many targets, labels become equal-length multiple-character codes; finish the entire code to select a target, or use Backspace to correct it.
 

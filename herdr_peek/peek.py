@@ -13,15 +13,18 @@ from dataclasses import asdict
 from pathlib import Path
 
 from prompt_toolkit import Application
+from prompt_toolkit.data_structures import Point
 from prompt_toolkit.filters import Condition, is_searching
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.application import get_app
-from prompt_toolkit.layout import DynamicContainer, Float, FloatContainer, HSplit, Layout, VSplit, Window
+from prompt_toolkit.layout import ConditionalContainer, DynamicContainer, Float, FloatContainer, HSplit, Layout, VSplit, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
+from prompt_toolkit.layout.margins import ScrollbarMargin
 from prompt_toolkit.mouse_events import MouseButton, MouseEventType
 from prompt_toolkit.lexers import DynamicLexer, PygmentsLexer
 from prompt_toolkit.search import start_search, stop_search
 from prompt_toolkit.styles import Style
+from prompt_toolkit.utils import get_cwidth
 from prompt_toolkit.widgets import Button, Label, SearchToolbar, TextArea
 from pygments.lexers import get_lexer_for_filename
 from pygments.util import ClassNotFound
@@ -128,6 +131,21 @@ class NativePreview:
                 self.process.stdout.close()
 
 
+class SidebarControl(FormattedTextControl):
+    def __init__(self, ui):
+        self.ui = ui
+        super().__init__(ui.sidebar_fragments, focusable=True, show_cursor=False,
+                         get_cursor_position=lambda: Point(0, ui.sidebar_index * 2))
+
+    def mouse_handler(self, event):
+        if event.event_type in (MouseEventType.SCROLL_UP, MouseEventType.SCROLL_DOWN):
+            self.ui.app.layout.focus(self)
+            self.ui.move_sidebar(1 if event.event_type == MouseEventType.SCROLL_DOWN else -1)
+            self.ui.app.invalidate()
+            return None
+        return super().mouse_handler(event)
+
+
 def launch_peek():
     if os.environ.get("HERDR_ENV") != "1":
         raise PeekError(tr("请从 Herdr 打开 Herdr Peek"))
@@ -184,6 +202,19 @@ class PeekUI:
         self.selectable = sorted(visible_owners)
         self.labels = hint_labels(self.selectable)
         self.grid = hint_grid(self.grid, self.labels)
+        self.target_owners = {}
+        for index in self.selectable:
+            self.target_owners.setdefault(self.screen.hits[index], index)
+        self.targets = list(self.target_owners)
+        self.sidebar_visible = len(self.targets) > 1 and snapshot["size"][0] >= 72
+        self.sidebar_index = 0
+        self.sidebar_control = SidebarControl(self)
+        self.sidebar = HSplit([
+            Window(FormattedTextControl(lambda: tr(" 文件 / 链接 · {count}", count=len(self.targets))), height=1,
+                   style="class:sidebar-heading"),
+            Window(self.sidebar_control, wrap_lines=False, always_hide_cursor=True,
+                   right_margins=[ScrollbarMargin(display_arrows=True)]),
+        ], width=lambda: max(16, min(34, get_app().output.get_size().columns // 3)))
         self.open_button = Button(tr("默认应用打开") + " Ctrl+O", handler=self.open_in_default, width=22)
         self.mode_button = Button(tr("切换预览"), handler=self.toggle_mode, width=14)
         self.copy_button = Button(tr("复制地址"), handler=self.copy_path, width=14)
@@ -193,7 +224,13 @@ class PeekUI:
             VSplit([Label(" Herdr Peek", style="class:title"),
                     self.open_button, self.mode_button, self.copy_button,
                     self.language_button, self.back_button], height=1),
-            self.path, self.body, self.search,
+            Window(FormattedTextControl(self.preview_navigation), height=1, style="class:status"),
+            VSplit([
+                ConditionalContainer(self.sidebar, filter=Condition(lambda: self.sidebar_visible)),
+                ConditionalContainer(Window(width=1, char="│", style="class:sidebar-heading"),
+                                     filter=Condition(lambda: self.sidebar_visible)),
+                HSplit([self.path, self.body, self.search]),
+            ]),
             Window(FormattedTextControl(lambda: " " + self.status), height=1, style="class:status"),
         ])
         footer_row = self.footer_row()
@@ -264,6 +301,39 @@ class PeekUI:
         def find(event):
             start_search(self.body.control)
 
+        preview_active = Condition(lambda: self.current is not None) & ~is_searching
+        sidebar_focused = Condition(lambda: self.app.layout.current_control == self.sidebar_control)
+
+        @keys.add("c-t", filter=preview_active)
+        def toggle_sidebar(event):
+            self.toggle_sidebar()
+
+        @keys.add("c-j", filter=preview_active)
+        @keys.add("c-k", filter=preview_active)
+        def next_preview(event):
+            step = 1 if event.key_sequence[0].key == "c-j" else -1
+            position = self.targets.index(self.current)
+            self.open_sidebar((position + step) % len(self.targets), focus_list=sidebar_focused())
+
+        @keys.add("tab", filter=preview_active)
+        @keys.add("s-tab", filter=preview_active)
+        def focus_sidebar(event):
+            if self.sidebar_visible and not sidebar_focused():
+                self.sidebar_index = self.targets.index(self.current)
+                self.app.layout.focus(self.sidebar_control)
+            else:
+                self.app.layout.focus(self.body)
+
+        @keys.add("up", filter=preview_active & sidebar_focused)
+        @keys.add("down", filter=preview_active & sidebar_focused)
+        def move_sidebar(event):
+            step = 1 if event.key_sequence[0].key == "down" else -1
+            self.move_sidebar(step)
+
+        @keys.add("enter", filter=preview_active & sidebar_focused)
+        def select_sidebar(event):
+            self.open_sidebar(self.sidebar_index, focus_list=True)
+
         self.app = Application(layout=Layout(root, focused_element=self.control), key_bindings=keys,
                                full_screen=True, mouse_support=True,
                                style=Style.from_dict({"": "bg:default fg:default",
@@ -273,7 +343,68 @@ class PeekUI:
                                    "hint-muted": "bg:#233a42 fg:#899fa6",
                                    "hint-badge": "bold bg:#ffd166 fg:#182027",
                                    "hint-border": "fg:#75d9eb",
+                                   "sidebar-heading": "bold fg:ansibrightcyan",
+                                   "sidebar-current": "bold bg:#164c60 fg:#effcff",
+                                   "sidebar-selected": "reverse bold",
                                    "button.focused": "reverse bold"}), min_redraw_interval=.03)
+
+    def preview_navigation(self):
+        def toggle(event):
+            if event.event_type == MouseEventType.MOUSE_UP and event.button == MouseButton.LEFT:
+                self.toggle_sidebar()
+            else:
+                return NotImplemented
+        help_text = tr(" ↑/↓ 选择 · Enter 打开 · Tab 正文") if self.app.layout.current_control == self.sidebar_control else tr(" Ctrl+J/K 切换 · Tab 列表/正文")
+        return [("reverse", tr(" [文件列表 · Ctrl+T] ") if self.sidebar_visible else tr(" [展开列表 · Ctrl+T] "), toggle),
+                ("", help_text)]
+
+    def toggle_sidebar(self):
+        self.sidebar_visible = not self.sidebar_visible
+        if not self.sidebar_visible and self.app.layout.current_control == self.sidebar_control:
+            self.app.layout.focus(self.body)
+        self.app.invalidate()
+
+    def sidebar_fragments(self):
+        result = []
+        width = max(16, min(34, get_app().output.get_size().columns // 3)) - 1
+        for position, reference in enumerate(self.targets):
+            if isinstance(reference, URLReference):
+                name = address = reference.url
+            else:
+                name = reference.path.name + (f":{reference.line}" if reference.line else "")
+                address = str(reference.path.relative_to(self.context.cwd)) if reference.path.is_relative_to(self.context.cwd) else str(reference.path)
+            active = reference == self.current
+            focused = self.app.layout.current_control == self.sidebar_control and position == self.sidebar_index
+            style = "class:sidebar-selected" if focused else "class:sidebar-current" if active else ""
+            def click(event, position=position):
+                if event.event_type == MouseEventType.MOUSE_UP and event.button == MouseButton.LEFT:
+                    self.open_sidebar(position, focus_list=True)
+                else:
+                    return NotImplemented
+            for line in (f"{'▸' if active else ' '} {name}", f"  {address}"):
+                if get_cwidth(line) > width:
+                    characters, occupied = [], 0
+                    for char in line:
+                        size = get_cwidth(char)
+                        if occupied + size > width - 1:
+                            break
+                        characters.append(char)
+                        occupied += size
+                    line = "".join(characters) + "…"
+                result.append((style, line + " " * (width - get_cwidth(line)), click))
+                result.append(("", "\n"))
+        return result[:-1]
+
+    def move_sidebar(self, step):
+        self.sidebar_index = max(0, min(len(self.targets) - 1, self.sidebar_index + step))
+
+    def open_sidebar(self, position, *, focus_list=False):
+        self.sidebar_index = position
+        reference = self.targets[position]
+        if reference != self.current:
+            self.choose(reference, focus_list=focus_list)
+        elif focus_list:
+            self.app.layout.focus(self.sidebar_control)
 
     def size_matches(self):
         size = get_app().output.get_size()
@@ -372,7 +503,7 @@ class PeekUI:
             try:
                 save_mode(mode)
                 self.mode, self.native_mode = mode, mode == 'macos'
-                self.status = tr("已保存：") + (tr("macOS 系统速览") if self.native_mode else tr("Herdr 浮窗")) + tr("；下次选择文件或链接时生效。")
+                self.status = tr("已保存：") + (tr("macOS 系统速览") if self.native_mode else tr("Herdr 浮窗")) + tr("；返回原文后，下次选择文件或链接时生效。")
             except PeekError as exc:
                 self.status = str(exc)
         self.app.invalidate()
@@ -381,6 +512,11 @@ class PeekUI:
         task = self.app.create_background_task(coroutine)
         self.preview_tasks.add(task)
         task.add_done_callback(self.preview_tasks.discard)
+
+    def cancel_preview_tasks(self):
+        for task in tuple(self.preview_tasks):
+            task.cancel()
+        self.preview_tasks.clear()
 
     def show_selection(self):
         self.current, self.lexer = None, None
@@ -396,28 +532,35 @@ class PeekUI:
             self.native.cancel()
             self.app.exit()
             return
-        for task in tuple(self.preview_tasks):
-            task.cancel()
-        self.preview_tasks.clear()
+        self.cancel_preview_tasks()
         self.native.cancel()
         self.show_selection()
 
-    def choose(self, reference):
-        if self.busy or not self.size_matches():
+    def choose(self, reference, *, focus_list=False):
+        if self.current is None and (self.busy or not self.size_matches()):
             return
+        from_preview = self.current is not None
+        if from_preview:
+            self.cancel_preview_tasks()
+            self.native.cancel()
+            self.native = NativePreview()
+            self.current = reference
+        self.index = self.target_owners[reference]
+        self.sidebar_index = self.targets.index(reference)
         self.busy = True
-        self.create_preview_task(self.open(reference))
+        self.create_preview_task(self.open(reference, focus_list=focus_list, from_preview=from_preview))
 
-    async def open(self, reference):
+    async def open(self, reference, *, focus_list=False, from_preview=False):
         notice = ""
-        if self.native_mode:
+        if self.native_mode and not from_preview:
+            native = self.native
             try:
                 if isinstance(reference, URLReference):
-                    await off_thread(lambda: self.native.open(reference.url, url=True))
+                    await off_thread(lambda: native.open(reference.url, url=True))
                 else:
-                    await off_thread(lambda: self.native.open(reference.path))
+                    await off_thread(lambda: native.open(reference.path))
                 self.native_opened = True
-                await off_thread(self.native.wait_closed)
+                await off_thread(native.wait_closed)
                 self.show_selection()
                 return
             except PeekError as exc:
@@ -425,11 +568,13 @@ class PeekUI:
         self.current = reference
         is_url = isinstance(reference, URLReference)
         self.path.text = reference.url if is_url else str(reference.path) + (f":{reference.line}" if reference.line else "")
-        self.app.layout.focus(self.body)
+        self.app.layout.focus(self.sidebar_control if focus_list and self.sidebar_visible else self.body)
+        self.lexer = None
+        self.body.text = tr("正在读取网页… Esc 可取消") if is_url else tr("正在读取文件… Esc 可取消")
         try:
+            if from_preview:
+                await asyncio.sleep(.12)
             if is_url:
-                self.body.text = tr("正在读取网页… Esc 可取消")
-                self.lexer = None
                 text, truncated = await asyncio.wait_for(off_thread(lambda: read_url(reference.url)), WEB_TIMEOUT)
             else:
                 text, truncated = await off_thread(lambda: read_file(reference.path))
