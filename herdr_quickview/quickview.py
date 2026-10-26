@@ -22,6 +22,7 @@ from prompt_toolkit.layout import ConditionalContainer, DynamicContainer, Float,
 from prompt_toolkit.layout.controls import FormattedTextControl, UIContent, UIControl
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.layout.margins import ScrollbarMargin
+from prompt_toolkit.layout.processors import Processor, Transformation
 from prompt_toolkit.mouse_events import MouseButton, MouseEventType
 from prompt_toolkit.lexers import DynamicLexer, PygmentsLexer
 from prompt_toolkit.search import start_search, stop_search
@@ -173,6 +174,20 @@ class SidebarControl(FormattedTextControl):
         return super().mouse_handler(event)
 
 
+class TargetLineProcessor(Processor):
+    def __init__(self, get_row):
+        self.get_row = get_row
+
+    def apply_transformation(self, ti):
+        fragments = ti.fragments
+        if ti.lineno == self.get_row():
+            if not any(fragment[1] for fragment in fragments):
+                fragments = [('', ' ')]
+            fragments = [('class:quickview.target ' + style, text, *rest)
+                         for style, text, *rest in fragments]
+        return Transformation(fragments)
+
+
 class ImageControl(UIControl):
     def is_focusable(self):
         return True
@@ -226,6 +241,7 @@ class QuickViewUI:
         self.context = context
         self.screen = Screen(snapshot, context.cwd)
         self.current, self.lexer = None, None
+        self.target_row = self.pending_row = None
         self.status = snapshot["notice"]
         self.index, self.busy, self.native_opened = -1, False, False
         self.typed = ""
@@ -246,7 +262,30 @@ class QuickViewUI:
                                     backward_search_prompt=lambda: tr('反向搜索：'))
         self.body = TextArea(read_only=True, scrollbar=True, line_numbers=True, wrap_lines=True,
                              search_field=self.search, focus_on_click=True,
-                             lexer=DynamicLexer(lambda: self.lexer))
+                             lexer=DynamicLexer(lambda: self.lexer),
+                             input_processors=[TargetLineProcessor(lambda: self.target_row)])
+        write_body = self.body.window.write_to_screen
+
+        def write_preview(screen, mouse_handlers, write_position, parent_style, erase_bg, z_index):
+            if self.pending_row is not None and write_position.width > 0 and write_position.height > 0:
+                window = self.body.window
+                content = self.body.control.create_content(write_position.width, write_position.height)
+                width = write_position.width - sum(margin.get_width(lambda: content)
+                                                   for margin in (*window.left_margins, *window.right_margins))
+                row = self.pending_row
+                target_height = content.get_height_for_line(row, max(1, width), window.get_line_prefix)
+                remaining = max(0, (write_position.height - target_height) // 2)
+                while row > 0:
+                    height = content.get_height_for_line(row - 1, max(1, width), window.get_line_prefix)
+                    if height > remaining:
+                        break
+                    remaining -= height
+                    row -= 1
+                window.vertical_scroll, window.vertical_scroll_2 = row, 0
+                self.pending_row = None
+            write_body(screen, mouse_handlers, write_position, parent_style, erase_bg, z_index)
+
+        self.body.window.write_to_screen = write_preview
         self.path = TextArea(read_only=True, height=Dimension(min=1, max=3), wrap_lines=True,
                              dont_extend_height=True, focus_on_click=True)
         self.image_window = ImageWindow()
@@ -391,8 +430,28 @@ class QuickViewUI:
             self.open_sidebar(self.sidebar_index, focus_list=True)
 
         self.app = Application(layout=Layout(root, focused_element=self.control), key_bindings=keys,
-                               full_screen=True, mouse_support=True,
+                               full_screen=True, mouse_support=True, include_default_pygments_style=False,
                                style=Style.from_dict({"": "bg:default fg:default",
+                                   "pygments.comment": "italic fg:ansibrightblack",
+                                   "pygments.keyword": "bold fg:ansimagenta",
+                                   "pygments.keyword.type": "fg:ansicyan",
+                                   "pygments.name.builtin": "fg:ansicyan",
+                                   "pygments.name.function": "fg:ansiblue",
+                                   "pygments.name.class": "bold fg:ansiyellow",
+                                   "pygments.name.namespace": "fg:ansiblue",
+                                   "pygments.name.decorator": "fg:ansimagenta",
+                                   "pygments.name.tag": "fg:ansiblue",
+                                   "pygments.name.attribute": "fg:ansicyan",
+                                   "pygments.literal.string": "fg:ansigreen",
+                                   "pygments.literal.number": "fg:ansiyellow",
+                                   "pygments.generic.strong": "bold",
+                                   "pygments.generic.emph": "italic",
+                                   "pygments.generic.heading": "bold",
+                                   "pygments.generic.subheading": "bold",
+                                   "pygments.generic.inserted": "fg:ansigreen",
+                                   "pygments.generic.deleted": "fg:ansired",
+                                   "pygments.error": "underline fg:ansired",
+                                   "quickview.target": "bold underline",
                                    "title": "bold fg:ansibrightcyan", "status": "fg:ansibrightcyan",
                                    "hint-path": "bold bg:#164c60 fg:#effcff",
                                    "hint-current": "bold bg:#c9f3ef fg:#102f36",
@@ -609,6 +668,7 @@ class QuickViewUI:
         self.preview_tasks.clear()
 
     def show_selection(self):
+        self.target_row = self.pending_row = None
         self.image_canvas.clear()
         self.image = None
         self.current, self.lexer = None, None
@@ -632,6 +692,7 @@ class QuickViewUI:
         if self.current is None and (self.busy or not self.size_matches()):
             return
         from_preview = self.current is not None
+        self.target_row = self.pending_row = None
         self.image_canvas.clear()
         self.image = None
         if from_preview:
@@ -645,6 +706,7 @@ class QuickViewUI:
         self.create_preview_task(self.open(reference, focus_list=focus_list, from_preview=from_preview))
 
     async def open(self, reference, *, focus_list=False, from_preview=False):
+        self.target_row = self.pending_row = None
         self.image_canvas.clear()
         self.image = None
         notice = ""
@@ -689,6 +751,9 @@ class QuickViewUI:
                     self.lexer = None
             self.body.text = text
             row = max(0, min(((None if is_url else reference.line) or 1) - 1, self.body.document.line_count - 1))
+            self.target_row = row if (not is_url and reference.line is not None
+                                      and 1 <= reference.line <= self.body.document.line_count) else None
+            self.pending_row = row
             self.body.buffer.cursor_position = self.body.document.translate_row_col_to_index(row, 0)
             self.status = notice + (tr("仅显示前 2 MiB。 ") if truncated else "") + (
                 tr("网页正文预览；需 JavaScript 或登录的页面可能不完整。Ctrl+F 搜索 · Esc 返回")

@@ -165,7 +165,7 @@ class ReadableHTML(HTMLParser):
 def read_url(url):
     started = time.monotonic()
     try:
-        request = Request(request_url(url), headers={'User-Agent': 'Herdr-QuickView/0.1.0', 'Accept': 'text/html, text/plain, application/json'})
+        request = Request(request_url(url), headers={'User-Agent': 'Herdr-QuickView/0.1.1', 'Accept': 'text/html, text/plain, application/json'})
         with build_opener(WebRedirect()).open(request, timeout=WEB_TIMEOUT) as response:
             kind = response.headers.get_content_type()
             if kind not in ('text/html', 'application/xhtml+xml', 'text/plain', 'application/json'):

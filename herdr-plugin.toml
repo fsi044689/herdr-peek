@@ -1,6 +1,6 @@
 id = "sylar.herdr-quickview"
 name = "Herdr QuickView"
-version = "0.1.0"
+version = "0.1.1"
 min_herdr_version = "0.9.5"
 description = "Preview file paths and HTTP(S) links in place; choose macOS Quick Look or a Herdr popup."
 platforms = ["macos", "linux"]

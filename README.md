@@ -23,7 +23,7 @@ These are actual screenshots of Herdr running in Kitty and the native macOS Quic
 ## Requirements and status
 
 - Herdr **0.9.5+**, Python **3.11+**, macOS or Linux.
-- Version **0.1.0**, initial beta version. Local macOS testing is complete for the cases described below; Linux desktop and physical-client shortcut acceptance are still pending.
+- Version **0.1.1**, beta version. Local macOS testing is complete for the cases described below; Linux desktop and physical-client shortcut acceptance are still pending.
 - Installation needs network access for Python dependencies. macOS Quick Look needs Xcode Command Line Tools to build its small native host; without build tools, Herdr text preview remains available.
 
 ## Install
@@ -86,6 +86,8 @@ The sidebar reuses this snapshot's visible targets, deduplicated by file/line or
 The sidebar shows each file name above its directory, and each URL site above its resource path. Long entries use a middle ellipsis so both ends remain visible. The preview address wraps to at most three rows; click it and use **Home / End** (Fn+← / Fn+→ on Mac) to see its beginning/end; Ctrl+A / Ctrl+E also work when your Herdr prefix does not intercept them. **Copy address** always copies the complete value. Arrow-only selection shows a separate **Selected:** address in the navigation bar; press Enter to preview that item.
 
 Copy address copies the real complete path or original URL, without terminal display wraps. Number labels use 1–9, 0, then letters; `q` is reserved for closing. With many targets, labels become equal-length multiple-character codes; finish the entire code to select a target, or use Backspace to correct it.
+
+Code highlighting uses your terminal's ANSI palette and preserves its background. Opening a local file with a line suffix, such as `src/example.py:150`, initially places that line near the center where space permits, accounting for wrapped lines. The referenced line stays bold and underlined when you move the cursor or search; scrolling remains free. Files without a line suffix start at the top without a target marker. This applies to Herdr text preview; macOS Quick Look keeps its system behavior.
 
 ## Preview support
 
