@@ -1,6 +1,6 @@
 # Herdr QuickView
 
-Preview file paths and HTTP(S) links already visible in a Herdr terminal. Select them **where they appear**, then open macOS Quick Look or an in-place Herdr text preview. No Git repository, project scan, project file list, or new tab is required.
+Preview file paths and HTTP(S) links already visible in a Herdr terminal. Select them **where they appear**, then open macOS Quick Look or an in-place Herdr text/image preview. No Git repository, project scan, project file list, or new tab is required.
 
 [简体中文](README.zh-CN.md)
 
@@ -64,18 +64,21 @@ For a shortcut, add this to your Herdr configuration, using an available key:
 [[keys.command]]
 key = "prefix+u"
 type = "plugin_action"
+# Stable QuickView action ID, retained from Herdr Peek for existing shortcuts.
 command = "sylar.herdr-peek.peek"
 description = "Herdr QuickView"
 ```
 
 Validate and reload your Herdr configuration after editing it. `prefix` means your configured Herdr prefix, which is not necessarily Ctrl+B.
 
+Keep `sylar.herdr-peek.peek` exactly as shown: `sylar.herdr-peek` is the registered plugin ID and `peek` is its action ID. The displayed name is Herdr QuickView. The IDs and settings directory retain their original names so existing installations keep working.
+
 ## Use it
 
 1. Bring the desired file path or HTTP(S) URL into view, then open QuickView.
 2. Recognized targets receive a colored highlight and a numbered or lettered badge. **Click the original text/badge, or type its label** to preview immediately. Tab / Shift+Tab and Enter also work.
 3. **Ctrl+P** or the clickable mode label switches between macOS Quick Look and the Herdr popup. The choice is saved and applies when you next select a target in the terminal snapshot. System Quick Look is available only on local macOS with the native helper installed.
-4. In Herdr preview, **Ctrl+F** searches. **Open in app / Ctrl+O** hands the file to its system-associated application, or the URL to the default browser. Unsupported formats also offer this button; apps open only on your explicit request.
+4. In Herdr text preview, **Ctrl+F** searches. Local static PNG, JPEG and WebP files use the same preview area for images. **Open in app / Ctrl+O** hands the file to its system-associated application, or the URL to the default browser. Unsupported formats also offer this button; apps open only on your explicit request.
 5. **Ctrl+L** or **中文 / English** changes the plugin language and remembers it. English is the default; no OS-language detection is performed.
 6. In Herdr preview, **Esc / q** or **Back** returns to the same path selection so you can preview another file. In macOS Quick Look, close the system panel with Esc, Space, or Cmd+W to return to selection. **Esc / q** from selection exits QuickView; **Ctrl+Q** exits directly from the plugin UI. While searching, the first Esc leaves search.
 
@@ -93,10 +96,15 @@ Copy address copies the real complete path or original URL, without terminal dis
 | --- | --- | --- |
 | UTF-8 text, source code, JSON | System preview, subject to installed extensions | Text, line numbers, syntax highlighting |
 | Markdown, local HTML, SVG | System-rendered content where supported | Source text |
-| PNG, PDF, ZIP, binary data | Depends on the system and its Quick Look extensions | Explicit unsupported-format message, with Open in app available |
+| Local static PNG, JPEG, WebP | System preview where supported | Image (character thumbnail when cell size is unavailable) |
+| Animated images, PDF, ZIP, other binary data | Depends on the system and its Quick Look extensions | Explicit unsupported-format message, with Open in app available |
 | HTTP(S) pages | Verified locally on macOS 26.2; not guaranteed on other versions | Extracted title, readable text and links; also plain text and JSON |
 
-Herdr reads at most 2 MiB. Web preview has an 8-second UI deadline; it does not run JavaScript, share browser login state, or render images/PDFs. A ready system panel confirms visibility and focus, **not** successful page loading. Apple's Quick Look item API documents file URLs, so online URL preview is treated as version-dependent behavior.
+Text and web preview read at most 2 MiB. Web preview has an 8-second UI deadline; it does not run JavaScript, share browser login state, or render images/PDFs. A ready system panel confirms visibility and focus, **not** successful page loading. Apple's Quick Look item API documents file URLs, so online URL preview is treated as version-dependent behavior.
+
+Images use [Herdr's supported Kitty graphics protocol](https://herdr.dev/docs/configuration/#kitty-graphics), without running Kitty or requiring `icat`. A color-character thumbnail is always drawn underneath, intended to retain a preview on clients without image support; that client fallback still needs visual acceptance. High-resolution display also requires usable terminal cell dimensions; if those are unavailable, only the thumbnail is drawn. The current Herdr 0.9.5 production popup reports no cell pixel dimensions on the tested machine, so this implementation currently uses the character thumbnail there. A user confirmed the PNG character thumbnail in the production popup on local macOS with Kitty. High-resolution popup rendering and fallback on other clients remain unverified. PNG/JPEG/WebP decoding uses Pillow, installed into the plugin's own environment.
+
+Only the selected local static image is decoded, in a cancellable worker with an 8-second deadline. Files are limited to 32 MiB; PNG/WebP to 16 million pixels. JPEG permits originals up to 100 million pixels, using reduced decoding and a 16-million-pixel decoded limit. Previews have a maximum edge of 1200 pixels; orientation and transparency are handled before display. Switching targets stops the old worker and removes QuickView's own image; returning or exiting also removes it. Image URLs are not automatically downloaded. PDFs, Office documents, archives, audio and video are outside the in-terminal image feature.
 
 ## Recognition and interaction limits
 
@@ -130,7 +138,7 @@ Changes from the UI preserve other fields, comments and configuration symlinks. 
 .venv/bin/python -m pip check
 ```
 
-The suite covers path/URL recognition, local HTTP fixtures, native handshake/failure simulation, settings, shell startup checks, and real prompt_toolkit input-pipe/mouse sequences. Native file previews were additionally inspected on macOS 26.2 with synthetic samples; installed Quick Look extensions affect results.
+The suite covers path/URL recognition, local HTTP fixtures, native handshake/failure simulation, settings, shell startup checks, real prompt_toolkit input-pipe/mouse sequences, isolated image decoding, cancellation, resource limits, and image cleanup. Native file previews were additionally inspected on macOS 26.2 with synthetic samples; installed Quick Look extensions affect results. Image protocol responses were checked in a real Herdr PTY; this does not establish visual correctness on each client.
 
 A clean Python 3.11 source build and the primary Python 3.14 environment are checked separately. Platform mocks and input-pipe tests do not establish Linux desktop behavior, actual Herdr-client key delivery, or default-app rendering. Those acceptance checks remain explicit release gaps. See [the Chinese notes](README.zh-CN.md) for the detailed prior acceptance matrix.
 

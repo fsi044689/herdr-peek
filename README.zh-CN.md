@@ -82,8 +82,18 @@ preview_mode = "macos" # 或 "herdr"
 - 本机 macOS：自己的小型原生宿主提供文件或 HTTP(S) URL，预览内容、标题和工具栏由 Apple 的 [QLPreviewPanel](https://developer.apple.com/documentation/quicklookui/qlpreviewpanel) 绘制；不使用 `qlmanage -p` 诊断窗口，不打开 Finder。系统标准面板不保证和 Finder 自带的附加操作逐项一致。
 - 原生宿主确认自己是前台应用、面板可见且为键盘焦点窗口后，才向选择层回报成功；失败约 3 秒后回退。无辅助功能或 System Events 权限要求。
 - 存在 SSH_CONNECTION 或 SSH_TTY 时使用 Herdr 预览。未设置这些变量的远程附着，当前协议无法完整识别，仍需实机验证。
-- Herdr 内预览上限 2 MiB，只支持 UTF-8 文本和代码，暂不渲染图片、PDF、压缩包等二进制内容。macOS 格式支持由系统 Quick Look 决定。
+- Herdr 文本／网页预览上限 2 MiB。另支持本地静态 PNG、JPEG、WebP 图片；PDF、Office、压缩包、影音等二进制内容不在终端内渲染。macOS 格式支持由系统 Quick Look 决定。
 - 临时画面交接文件权限为 0600，读取后立即删除；不长期保存终端文本。
+
+### Herdr 图片预览与兼容
+
+直接在原来的右侧预览区查看图片，沿用侧栏、Ctrl+J/K 切换、Ctrl+T 折叠、Ctrl+O 默认应用和 Esc 返回，不增加新的入口。图片页不启用文本搜索。
+
+使用 [Herdr 官方支持的 Kitty 图像协议](https://herdr.dev/docs/configuration/#kitty-graphics)，不调用 Kitty，也不要求安装 `icat`。底层同时绘制彩色字符缩略图，预期不支持图像的客户端仍能查看缩略图，此回退仍待实机验收；拿不到终端单元格尺寸时也仅显示缩略图。本机 Herdr 0.9.5 正式 popup 入口没有提供单元格像素尺寸，当前实现因此在该入口使用字符缩略图。用户已在本机 macOS＋Kitty 的正式 popup 入口确认 PNG 字符缩略图可见；高清 popup 绘图及其他客户端的回退仍未验证，不能保证所有终端都能显示高清图片。图片解码依赖 Pillow，随插件安装到独立 `.venv`。
+
+仅解码当前选中的本地静态图片，不自动下载 URL 图片。解码在可取消的独立进程中执行，8 秒超时；源文件最多 32 MiB。PNG/WebP 最多 1600 万像素；JPEG 原图最多 1 亿像素，先使用缩略解码，再限制解码尺寸为 1600 万像素。预览最长边为 1200 像素，处理 EXIF 方向和透明背景；动画不播放。切换目标会停止旧任务并删除插件自己的图片，返回和退出时同样清理，不清除其他程序的图片。
+
+已用真实 Herdr PTY 验证协议应答，并以输入管道验证缩略图、切换、擦屏恢复和退出清理；这不等于各客户端的实机视觉验收。
 
 侧栏中文件显示“文件名＋所在目录”，URL 显示“站点＋页面路径”。长文本从中间省略，保留首尾。右侧地址最多换行显示三行，点击地址后可按 **Home / End**（Mac 可按 Fn+← / Fn+→）查看开头/末尾；Herdr 前缀不拦截时也可用 Ctrl+A / Ctrl+E；“复制地址”始终复制完整值。列表仅用方向键选中时，导航行单独显示“选中”地址；按 Enter 才切换预览。
 
@@ -112,11 +122,14 @@ herdr plugin link /absolute/path/to/herdr-quickview
 [[keys.command]]
 key = "prefix+u"
 type = "plugin_action"
+# QuickView 沿用原 action ID，保留已有快捷键兼容。
 command = "sylar.herdr-peek.peek"
 description = "Herdr QuickView · 文件速览"
 ```
 
 修改快捷键后运行 `herdr config check`、`herdr server reload-config`，无需重启 Herdr。
+
+`command = "sylar.herdr-peek.peek"` 请按示例保留：`sylar.herdr-peek` 是已注册的插件 ID，末尾的 `peek` 是 action ID；显示名称为 Herdr QuickView。ID 和设置目录沿用旧名，已有安装、快捷键和偏好可继续使用。
 
 ```sh
 .venv/bin/python -m unittest discover -s tests -v

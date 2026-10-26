@@ -562,7 +562,11 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
         for file in files:
             with self.subTest(file=file.name):
                 await self.ui.open(Reference(file))
-                if file.suffix in ('.png', '.pdf', '.zip', '.bin'):
+                if file.suffix == '.png':
+                    self.assertIsNotNone(self.ui.image)
+                    self.assertEqual(self.ui.image.format, 'PNG')
+                    self.assertEqual(self.ui.body.text, '')
+                elif file.suffix in ('.pdf', '.zip', '.bin'):
                     self.assertIn('无法在 Herdr 内预览', self.ui.body.text)
                     self.assertNotIn('%PDF', self.ui.body.text)
                 else:

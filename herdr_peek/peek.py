@@ -19,7 +19,8 @@ from prompt_toolkit.filters import Condition, is_searching
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.application import get_app
 from prompt_toolkit.layout import ConditionalContainer, DynamicContainer, Float, FloatContainer, HSplit, Layout, VSplit, Window
-from prompt_toolkit.layout.controls import FormattedTextControl
+from prompt_toolkit.layout.controls import FormattedTextControl, UIContent, UIControl
+from prompt_toolkit.formatted_text.utils import split_lines
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.layout.margins import ScrollbarMargin
 from prompt_toolkit.mouse_events import MouseButton, MouseEventType
@@ -37,6 +38,7 @@ from .core import PeekError, Context, cli, clipboard_write, open_default, read_f
 from .screen import HINT_KEYS, Screen, capture_screen, hint_grid, hint_labels
 from .links import URLReference, WEB_TIMEOUT, read_url
 from .settings import load_language, load_mode, local_macos, save_language, save_mode
+from .images import ImageCanvas, ImageError, cell_pixels, is_image, load_image
 
 
 def off_thread(fn):
@@ -172,6 +174,40 @@ class SidebarControl(FormattedTextControl):
         return super().mouse_handler(event)
 
 
+class ImageControl(UIControl):
+    def __init__(self, window):
+        self.window = window
+
+    def is_focusable(self):
+        return True
+
+    def create_content(self, width, height):
+        window = self.window
+        window.pixels = cell_pixels(window.ui.app.output)
+        window.rendered = window.ui.image.render(width, height or 1, window.pixels)
+        lines = list(split_lines(window.rendered.fragments))
+        return UIContent(get_line=lambda i: lines[i], line_count=len(lines), show_cursor=False)
+
+    def mouse_handler(self, event):
+        if event.event_type == MouseEventType.MOUSE_UP and event.button == MouseButton.LEFT:
+            get_app().layout.focus(self)
+            return None
+        return NotImplemented
+
+
+class ImageWindow(Window):
+    def __init__(self, ui):
+        self.ui = ui
+        self.position = None
+        self.rendered = None
+        self.pixels = None
+        super().__init__(ImageControl(self), wrap_lines=False, always_hide_cursor=True)
+
+    def write_to_screen(self, screen, mouse_handlers, write_position, parent_style, erase_bg, z_index):
+        self.position = write_position
+        super().write_to_screen(screen, mouse_handlers, write_position, parent_style, erase_bg, z_index)
+
+
 def launch_peek():
     if os.environ.get("HERDR_ENV") != "1":
         raise PeekError(tr("请从 Herdr 打开 Herdr QuickView"))
@@ -205,6 +241,7 @@ class PeekUI:
         self.typed = ""
         self.native = NativePreview()
         self.preview_tasks = set()
+        self.image = None
         try:
             set_language(load_language())
             self.mode = load_mode()
@@ -222,6 +259,7 @@ class PeekUI:
                              lexer=DynamicLexer(lambda: self.lexer))
         self.path = TextArea(read_only=True, height=Dimension(min=1, max=3), wrap_lines=True,
                              dont_extend_height=True, focus_on_click=True)
+        self.image_window = ImageWindow(self)
         self.control = FormattedTextControl(self.fragments, focusable=True, show_cursor=False)
         self.canvas = Window(self.control, wrap_lines=False, always_hide_cursor=True)
         self.grid = self.screen.cells(*snapshot["size"])
@@ -256,7 +294,8 @@ class PeekUI:
                 ConditionalContainer(self.sidebar, filter=Condition(lambda: self.sidebar_visible)),
                 ConditionalContainer(Window(width=1, char="│", style="class:sidebar-heading"),
                                      filter=Condition(lambda: self.sidebar_visible)),
-                HSplit([self.path, self.body, self.search]),
+                HSplit([self.path, DynamicContainer(lambda: self.image_window if self.image else self.body),
+                        ConditionalContainer(self.search, filter=Condition(lambda: self.image is None))]),
             ]),
             Window(FormattedTextControl(lambda: " " + self.status), height=1, style="class:status"),
         ])
@@ -324,7 +363,7 @@ class PeekUI:
         def erase_hint(event):
             self.typed = self.typed[:-1]
 
-        @keys.add("c-f", filter=Condition(lambda: self.current is not None))
+        @keys.add("c-f", filter=Condition(lambda: self.current is not None and self.image is None))
         def find(event):
             start_search(self.body.control)
 
@@ -349,7 +388,7 @@ class PeekUI:
                 self.sidebar_index = self.targets.index(self.current)
                 self.app.layout.focus(self.sidebar_control)
             else:
-                self.app.layout.focus(self.body)
+                self.app.layout.focus(self.preview_control())
 
         @keys.add("up", filter=preview_active & sidebar_focused)
         @keys.add("down", filter=preview_active & sidebar_focused)
@@ -374,6 +413,25 @@ class PeekUI:
                                    "sidebar-current": "bold bg:#164c60 fg:#effcff",
                                    "sidebar-selected": "reverse bold",
                                    "button.focused": "reverse bold"}), min_redraw_interval=.03)
+        self.image_canvas = ImageCanvas(self.app.output)
+        self.app.before_render += self.before_render
+        self.app.after_render += self.after_render
+
+    def preview_control(self):
+        return self.image_window.content if self.image else self.body.control
+
+    def before_render(self, app):
+        self.image_window.position = None
+
+    def after_render(self, app):
+        position = self.image_window.position
+        if app.is_done:
+            self.image_canvas.close()
+        elif self.image and position and self.image_window.pixels:
+            self.image_canvas.show(self.image_window.rendered, position.xpos, position.ypos,
+                                   position.width, position.height)
+        else:
+            self.image_canvas.clear()
 
     def preview_navigation(self):
         def toggle(event):
@@ -400,7 +458,7 @@ class PeekUI:
     def toggle_sidebar(self):
         self.sidebar_visible = not self.sidebar_visible
         if not self.sidebar_visible and self.app.layout.current_control == self.sidebar_control:
-            self.app.layout.focus(self.body)
+            self.app.layout.focus(self.preview_control())
         self.app.invalidate()
 
     def sidebar_fragments(self):
@@ -561,6 +619,8 @@ class PeekUI:
         self.preview_tasks.clear()
 
     def show_selection(self):
+        self.image_canvas.clear()
+        self.image = None
         self.current, self.lexer = None, None
         self.busy, self.native_opened = False, False
         self.typed = ""
@@ -582,6 +642,8 @@ class PeekUI:
         if self.current is None and (self.busy or not self.size_matches()):
             return
         from_preview = self.current is not None
+        self.image_canvas.clear()
+        self.image = None
         if from_preview:
             self.cancel_preview_tasks()
             self.native.cancel()
@@ -593,6 +655,8 @@ class PeekUI:
         self.create_preview_task(self.open(reference, focus_list=focus_list, from_preview=from_preview))
 
     async def open(self, reference, *, focus_list=False, from_preview=False):
+        self.image_canvas.clear()
+        self.image = None
         notice = ""
         if self.native_mode and not from_preview:
             native = self.native
@@ -618,6 +682,15 @@ class PeekUI:
                 await asyncio.sleep(.12)
             if is_url:
                 text, truncated = await asyncio.wait_for(off_thread(lambda: read_url(reference.url)), WEB_TIMEOUT)
+            elif await off_thread(lambda: is_image(reference.path)):
+                self.image = await load_image(reference.path)
+                self.body.text = ''
+                self.status = tr("{kind} · {width} × {height} · 不支持高清图像时显示缩略图 · Ctrl+O 默认应用 · Esc 返回",
+                                 kind=self.image.format, width=self.image.width, height=self.image.height)
+                self.app.layout.focus(self.sidebar_control if focus_list and self.sidebar_visible else self.preview_control())
+                self.busy = False
+                self.app.invalidate()
+                return
             else:
                 text, truncated = await off_thread(lambda: read_file(reference.path))
                 try:
@@ -630,6 +703,15 @@ class PeekUI:
             self.status = notice + (tr("仅显示前 2 MiB。 ") if truncated else "") + (
                 tr("网页正文预览；需 JavaScript 或登录的页面可能不完整。Ctrl+F 搜索 · Esc 返回")
                 if is_url else tr("Ctrl+F 搜索 · Esc / q 返回 · Ctrl+Q 退出"))
+        except ImageError as exc:
+            reasons = {
+                'file_limit': tr("图片文件超过 32 MiB，未解码。"),
+                'pixel_limit': tr("图片尺寸超过安全预览上限，未解码。"),
+                'animated': tr("当前仅支持静态 PNG、JPEG 和 WebP 图片。"),
+                'timeout': tr("图片读取超时，已停止解码。"),
+            }
+            self.body.text = reasons.get(str(exc), tr("图片解码失败或格式不受支持。"))
+            self.status = tr("可用默认应用打开（Ctrl+O） · 复制地址 · Esc 返回")
         except (PeekError, OSError, asyncio.TimeoutError) as exc:
             reason = str(exc) or tr("网页读取超时")
             self.body.text = tr("此网页暂时无法在 Herdr 内预览。\n\n{reason}" if is_url else "此文件暂时无法在 Herdr 内预览。\n\n{reason}", reason=reason)
@@ -683,3 +765,4 @@ def main():
         ui.app.run()
     finally:
         ui.native.cancel()
+        ui.image_canvas.close()
