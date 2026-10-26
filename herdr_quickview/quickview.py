@@ -34,7 +34,7 @@ from pygments.util import ClassNotFound
 
 from .i18n import get_language, set_language, tr
 
-from .core import PeekError, Context, cli, clipboard_write, open_default, read_file, rpc
+from .core import QuickViewError, Context, cli, clipboard_write, open_default, read_file, rpc
 from .screen import HINT_KEYS, Screen, capture_screen, hint_grid, hint_labels
 from .links import URLReference, WEB_TIMEOUT, read_url
 from .settings import load_language, load_mode, local_macos, save_language, save_mode
@@ -68,7 +68,7 @@ def off_thread(fn):
 
 def native_preview_executable():
     root = Path(os.environ.get("HERDR_PLUGIN_ROOT", Path(__file__).resolve().parent.parent))
-    return root / ".native/Herdr Peek.app/Contents/MacOS/herdr-peek-preview"
+    return root / ".native/Herdr QuickView.app/Contents/MacOS/herdr-quickview-preview"
 
 
 def native_quicklook_available():
@@ -95,9 +95,9 @@ class NativePreview:
 
     def open(self, path, *, url=False):
         if not native_quicklook_available():
-            raise PeekError(tr("系统速览不可用"))
+            raise QuickViewError(tr("系统速览不可用"))
         if self.cancelled.is_set():
-            raise PeekError(tr("已取消速览"))
+            raise QuickViewError(tr("已取消速览"))
         try:
             self.process = subprocess.Popen(
                 [str(native_preview_executable()), *(["--url"] if url else []), str(path)],
@@ -109,27 +109,27 @@ class NativePreview:
                 deadline = time.monotonic() + 4
                 while time.monotonic() < deadline:
                     if self.cancelled.is_set():
-                        raise PeekError(tr("已取消速览"))
+                        raise QuickViewError(tr("已取消速览"))
                     if not selector.select(.05):
                         continue
                     line = self.process.stdout.readline(4096)
                     if not line:
-                        raise PeekError(tr("系统速览已提前退出"))
+                        raise QuickViewError(tr("系统速览已提前退出"))
                     status = json.loads(line)
                     if status.get("error"):
                         error = status["error"]
                         if error in ('系统预览未获得焦点', '无效的 HTTP(S) 链接'):
                             error = tr(error)
-                        raise PeekError(error)
+                        raise QuickViewError(error)
                     if (status.get("ready") and status.get("system_panel")
                             and status.get("key_window") and status.get("active")
                             and status.get("pid") == self.process.pid):
                         return
-                    raise PeekError(tr("系统速览未确认窗口焦点"))
-                raise PeekError(tr("系统速览启动超时"))
-        except (OSError, ValueError, PeekError) as exc:
+                    raise QuickViewError(tr("系统速览未确认窗口焦点"))
+                raise QuickViewError(tr("系统速览启动超时"))
+        except (OSError, ValueError, QuickViewError) as exc:
             self.cancel()
-            raise PeekError(tr("系统速览打开失败：{error}", error=exc)) from exc
+            raise QuickViewError(tr("系统速览打开失败：{error}", error=exc)) from exc
         finally:
             if self.process is not None and self.process.stdout is not None:
                 self.process.stdout.close()
@@ -208,30 +208,30 @@ class ImageWindow(Window):
         super().write_to_screen(screen, mouse_handlers, write_position, parent_style, erase_bg, z_index)
 
 
-def launch_peek():
+def launch_quickview():
     if os.environ.get("HERDR_ENV") != "1":
-        raise PeekError(tr("请从 Herdr 打开 Herdr QuickView"))
+        raise QuickViewError(tr("请从 Herdr 打开 Herdr QuickView"))
     context = Context.load()
     screen = capture_screen(context)
     payload = {"context": {**asdict(context), "cwd": str(context.cwd)}, "screen": screen}
-    fd, name = tempfile.mkstemp(prefix="herdr-peek-", suffix=".json")
+    fd, name = tempfile.mkstemp(prefix="herdr-quickview-", suffix=".json")
     try:
         with os.fdopen(fd, "w") as stream:
             json.dump(payload, stream, ensure_ascii=False)
         snapshot = cli("api", "snapshot")["snapshot"]
         if snapshot["focused_pane_id"] != context.pane_id:
-            raise PeekError(tr("活动窗格已变化，请从目标 CLI 重新打开速览"))
+            raise QuickViewError(tr("活动窗格已变化，请从目标 CLI 重新打开速览"))
         rpc("plugin.pane.open", {
-            "plugin_id": "sylar.herdr-peek", "entrypoint": "peek",
+            "plugin_id": "sylar.herdr-quickview", "entrypoint": "quickview",
             "placement": "popup", "focus": True, "width": "100%", "height": "100%",
-            "env": {"PEEK_SOURCE_FILE": name},
+            "env": {"QUICKVIEW_SOURCE_FILE": name},
         })
     except Exception:
         Path(name).unlink(missing_ok=True)
         raise
 
 
-class PeekUI:
+class QuickViewUI:
     def __init__(self, context, snapshot):
         self.context = context
         self.screen = Screen(snapshot, context.cwd)
@@ -245,7 +245,7 @@ class PeekUI:
         try:
             set_language(load_language())
             self.mode = load_mode()
-        except PeekError as exc:
+        except QuickViewError as exc:
             self.mode = 'herdr'
             self.status = str(exc)
         self.native_mode = self.mode == 'macos' and native_quicklook_available()
@@ -579,7 +579,7 @@ class PeekUI:
         language = 'zh' if get_language() == 'en' else 'en'
         try:
             save_language(language)
-        except PeekError as exc:
+        except QuickViewError as exc:
             self.status = str(exc)
         else:
             set_language(language)
@@ -604,7 +604,7 @@ class PeekUI:
                 save_mode(mode)
                 self.mode, self.native_mode = mode, mode == 'macos'
                 self.status = tr("已保存：") + (tr("macOS 系统速览") if self.native_mode else tr("Herdr 浮窗")) + tr("；返回原文后，下次选择文件或链接时生效。")
-            except PeekError as exc:
+            except QuickViewError as exc:
                 self.status = str(exc)
         self.app.invalidate()
 
@@ -669,7 +669,7 @@ class PeekUI:
                 await off_thread(native.wait_closed)
                 self.show_selection()
                 return
-            except PeekError as exc:
+            except QuickViewError as exc:
                 notice = tr("{error}，已改用 Herdr 预览。 ", error=exc)
         self.current = reference
         is_url = isinstance(reference, URLReference)
@@ -712,7 +712,7 @@ class PeekUI:
             }
             self.body.text = reasons.get(str(exc), tr("图片解码失败或格式不受支持。"))
             self.status = tr("可用默认应用打开（Ctrl+O） · 复制地址 · Esc 返回")
-        except (PeekError, OSError, asyncio.TimeoutError) as exc:
+        except (QuickViewError, OSError, asyncio.TimeoutError) as exc:
             reason = str(exc) or tr("网页读取超时")
             self.body.text = tr("此网页暂时无法在 Herdr 内预览。\n\n{reason}" if is_url else "此文件暂时无法在 Herdr 内预览。\n\n{reason}", reason=reason)
             self.status = notice + tr("可用默认应用打开（Ctrl+O） · 复制地址 · Esc 返回")
@@ -731,7 +731,7 @@ class PeekUI:
                 else:
                     await off_thread(lambda: open_default(reference.path))
                 self.status = tr("已提交系统默认应用打开请求。Esc 可返回选择。")
-            except PeekError as exc:
+            except QuickViewError as exc:
                 self.status = tr("默认应用打开请求未确认：{error}", error=exc)
             finally:
                 if asyncio.current_task() in self.preview_tasks:
@@ -747,20 +747,20 @@ class PeekUI:
             try:
                 await off_thread(lambda: clipboard_write(reference.url if isinstance(reference, URLReference) else str(reference.path)))
                 self.status = tr("已复制完整链接。") if isinstance(reference, URLReference) else tr("已复制完整路径（不含终端显示折行）。")
-            except PeekError as exc:
+            except QuickViewError as exc:
                 self.status = str(exc)
             self.app.invalidate()
         self.create_preview_task(copy())
 
 
 def main():
-    path = Path(os.environ["PEEK_SOURCE_FILE"])
+    path = Path(os.environ["QUICKVIEW_SOURCE_FILE"])
     try:
         data = json.loads(path.read_text())
     finally:
         path.unlink(missing_ok=True)
     context = Context(**{**data["context"], "cwd": Path(data["context"]["cwd"])})
-    ui = PeekUI(context, data["screen"])
+    ui = QuickViewUI(context, data["screen"])
     try:
         ui.app.run()
     finally:

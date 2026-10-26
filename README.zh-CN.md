@@ -3,7 +3,6 @@
 独立的 Herdr 文件与链接速览插件。当前版本 **0.1.0**，首个测试版本。
 
 
-Herdr QuickView 原名 Herdr Peek。稳定插件 ID `sylar.herdr-peek`、action `peek` 和设置目录继续保留，已有快捷键与偏好无需迁移。原 `v0.1.0` 标签保留旧名版本；下方默认分支安装包含本轮更新。
 ## 看看效果
 
 **路径在哪，就在哪选。** 打开 QuickView 后，直接点击高亮的文件或链接，也可以输入旁边的编号立即预览。
@@ -56,7 +55,7 @@ Herdr 预览页左侧是可折叠的**文件／链接列表**，右侧是原预�
 
 ## 预览方式与 URL
 
-设置保存在 Herdr 注入的 `HERDR_PLUGIN_CONFIG_DIR/config.toml`，通常为 `~/.config/herdr/plugins/config/sylar.herdr-peek/config.toml`：
+设置保存在 Herdr 注入的 `HERDR_PLUGIN_CONFIG_DIR/config.toml`，通常为 `~/.config/herdr/plugins/config/sylar.herdr-quickview/config.toml`：
 
 ```toml
 preview_mode = "macos" # 或 "herdr"
@@ -116,20 +115,18 @@ sh bootstrap.sh # 自动寻找 Python 3.11+；也可 PYTHON=python3.11 sh bootst
 herdr plugin link /absolute/path/to/herdr-quickview
 ```
 
-依赖只安装到插件自己的 `.venv`，安装需要联网获取 Python 依赖。Python 版本不满足时会在建环境前明确失败；再次构建会重建版本过旧或损坏的插件运行环境。如果按快捷键没有界面，请在源码目录重新执行 `sh bootstrap.sh`。macOS 安装时使用 Xcode Command Line Tools 编译并本地签名原生宿主，产物在 `.native/Herdr Peek.app`；缺少编译工具时仅使用 Herdr 内预览。Linux 跳过此构建。插件 ID 为 `sylar.herdr-peek`，action 为 `peek`。
+依赖只安装到插件自己的 `.venv`，安装需要联网获取 Python 依赖。Python 版本不满足时会在建环境前明确失败；再次构建会重建版本过旧或损坏的插件运行环境。如果按快捷键没有界面，请在源码目录重新执行 `sh bootstrap.sh`。macOS 安装时使用 Xcode Command Line Tools 编译并本地签名原生宿主，产物在 `.native/Herdr QuickView.app`；缺少编译工具时仅使用 Herdr 内预览。Linux 跳过此构建。插件 ID 为 `sylar.herdr-quickview`，action 为 `quickview`。
 
 ```toml
 [[keys.command]]
 key = "prefix+u"
 type = "plugin_action"
-# QuickView 沿用原 action ID，保留已有快捷键兼容。
-command = "sylar.herdr-peek.peek"
+command = "sylar.herdr-quickview.quickview"
 description = "Herdr QuickView · 文件速览"
 ```
 
 修改快捷键后运行 `herdr config check`、`herdr server reload-config`，无需重启 Herdr。
 
-`command = "sylar.herdr-peek.peek"` 请按示例保留：`sylar.herdr-peek` 是已注册的插件 ID，末尾的 `peek` 是 action ID；显示名称为 Herdr QuickView。ID 和设置目录沿用旧名，已有安装、快捷键和偏好可继续使用。
 
 ```sh
 .venv/bin/python -m unittest discover -s tests -v

@@ -13,9 +13,9 @@ from prompt_toolkit.input import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 from prompt_toolkit.utils import get_cwidth
 
-from herdr_peek.core import Context, PeekError
-from herdr_peek.peek import NativePreview, PeekUI, native_quicklook_available
-from herdr_peek.screen import (HINT_KEYS, Reference, Screen, align_text, capture_screen, content_origin, hint_grid, hint_labels,
+from herdr_quickview.core import Context, QuickViewError
+from herdr_quickview.quickview import NativePreview, QuickViewUI, native_quicklook_available
+from herdr_quickview.screen import (HINT_KEYS, Reference, Screen, align_text, capture_screen, content_origin, hint_grid, hint_labels,
                                reference_spans, screen_text, unwrap_visible)
 
 
@@ -26,10 +26,10 @@ def snapshot(ansi, logical=None, columns=80, rows=24, x=0, y=0):
 
 
 def setUpModule():
-    language = patch("herdr_peek.i18n._language", "zh")
+    language = patch("herdr_quickview.i18n._language", "zh")
     language.start()
     unittest.addModuleCleanup(language.stop)
-    preference = patch("herdr_peek.peek.load_language", return_value="zh")
+    preference = patch("herdr_quickview.quickview.load_language", return_value="zh")
     preference.start()
     unittest.addModuleCleanup(preference.stop)
 
@@ -40,7 +40,7 @@ class ScreenTests(unittest.TestCase):
             root = Path(d).resolve()
             file = root/'real.md'
             file.write_text('preview')
-            for prefix in ('~5min', '~peek_user_does_not_exist_501/x'):
+            for prefix in ('~5min', '~quickview_user_does_not_exist_501/x'):
                 self.assertEqual(Screen(snapshot(f'{prefix} then {file}', columns=180), root).hits,
                                  [Reference(file)])
 
@@ -148,12 +148,12 @@ class ScreenTests(unittest.TestCase):
         pane = {'scroll': {'max_offset_from_bottom': 8, 'offset_from_bottom': 3, 'viewport_rows': 3}}
         raw = '/tmp/a-very-long\n-name.py\nhard newline'
         logical = '/tmp/a-very-long-name.py\nhard newline'
-        with patch('herdr_peek.screen.rpc', return_value={'text': logical}) as rpc:
+        with patch('herdr_quickview.screen.rpc', return_value={'text': logical}) as rpc:
             self.assertEqual(unwrap_visible(context, pane, raw), (logical, ''))
             rpc.assert_called_once()
             self.assertEqual(rpc.call_args.args[0], 'pane.selection.read')
             self.assertEqual(rpc.call_args.args[1]['anchor'], {'row': 5, 'col': 0})
-        with patch('herdr_peek.screen.rpc', return_value={'text': 'changed'}):
+        with patch('herdr_quickview.screen.rpc', return_value={'text': 'changed'}):
             text, notice = unwrap_visible(context, pane, raw)
             self.assertEqual(text, raw)
             self.assertIn('未能', notice)
@@ -169,7 +169,7 @@ class ScreenTests(unittest.TestCase):
                 {'pane_id': 'two', 'rect': {**area, 'x': 42, 'width': 41}}]}
             responses = [{'layout': layout}, {'read': {'text': 'first'}}, {'pane': {}}, {'read': {'text': 'sibling'}}]
             with patch.dict(os.environ, {'HERDR_CONFIG_PATH': str(config)}), \
-                    patch('herdr_peek.screen.rpc', side_effect=responses) as rpc:
+                    patch('herdr_quickview.screen.rpc', side_effect=responses) as rpc:
                 data = capture_screen(context)
             self.assertEqual(data['size'], [80, 24])
             self.assertEqual([(f['x'], f['y']) for f in data['frames']], [(0, 0), (42, 0)])
@@ -179,14 +179,14 @@ class ScreenTests(unittest.TestCase):
                     self.assertEqual(call.args[1]['format'], 'ansi')
 
     def test_platform_requires_local_mac_and_native_tools(self):
-        with patch.dict(os.environ, {}, clear=True), patch('herdr_peek.peek.os.access', return_value=True):
+        with patch.dict(os.environ, {}, clear=True), patch('herdr_quickview.quickview.os.access', return_value=True):
             for platform, native in [('darwin', True), ('linux', False), ('win32', False)]:
-                with patch('herdr_peek.peek.sys.platform', platform):
+                with patch('herdr_quickview.quickview.sys.platform', platform):
                     self.assertEqual(native_quicklook_available(), native)
-            with patch('herdr_peek.peek.sys.platform', 'darwin'):
+            with patch('herdr_quickview.quickview.sys.platform', 'darwin'):
                 with patch.dict(os.environ, {'SSH_CONNECTION': 'remote'}):
                     self.assertFalse(native_quicklook_available())
-                with patch('herdr_peek.peek.os.access', return_value=False):
+                with patch('herdr_quickview.quickview.os.access', return_value=False):
                     self.assertFalse(native_quicklook_available())
 
     def test_labels_are_unique_and_never_prefix_each_other(self):
@@ -225,13 +225,13 @@ class NativePreviewTests(unittest.TestCase):
                 helper.chmod(0o700)
                 preview = NativePreview()
                 try:
-                    with patch('herdr_peek.peek.native_quicklook_available', return_value=True), \
-                            patch('herdr_peek.peek.native_preview_executable', return_value=helper):
+                    with patch('herdr_quickview.quickview.native_quicklook_available', return_value=True), \
+                            patch('herdr_quickview.quickview.native_preview_executable', return_value=helper):
                         if key_window:
                             preview.open(Path(d)/'file')
                             self.assertIsNone(preview.process.poll())
                         else:
-                            with self.assertRaisesRegex(PeekError, '未确认窗口焦点'):
+                            with self.assertRaisesRegex(QuickViewError, '未确认窗口焦点'):
                                 preview.open(Path(d)/'file')
                 finally:
                     preview.cancel()
@@ -247,7 +247,7 @@ class ScreenOutput(DummyOutput):
         return self.size
 
 
-class PeekUITests(unittest.IsolatedAsyncioTestCase):
+class QuickViewUITests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name).resolve()
@@ -271,9 +271,9 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
         self.pipe = self.pipe_context.__enter__()
         self.output = ScreenOutput(columns, rows)
         text = text or '原 CLI 输出\n修改了 `中文 note.py:3`\n其他日志仍在原来的位置'
-        with patch('herdr_peek.peek.Application', side_effect=lambda **kw: Application(input=self.pipe, output=self.output, **kw)), \
-                patch('herdr_peek.peek.native_quicklook_available', return_value=native):
-            self.ui = PeekUI(Context('origin', 'tab', 'ws', self.root),
+        with patch('herdr_quickview.quickview.Application', side_effect=lambda **kw: Application(input=self.pipe, output=self.output, **kw)), \
+                patch('herdr_quickview.quickview.native_quicklook_available', return_value=native):
+            self.ui = QuickViewUI(Context('origin', 'tab', 'ws', self.root),
                              snapshot(text, logical, columns, rows, y=source_y))
         self.task = asyncio.create_task(self.ui.app.run_async())
         await asyncio.sleep(.1)
@@ -311,7 +311,7 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(.15)
         self.assertIn('无法在 Herdr 内预览', self.ui.body.text)
         before = self.ui.body.text
-        with patch('herdr_peek.peek.open_default') as opener:
+        with patch('herdr_quickview.quickview.open_default') as opener:
             self.pipe.send_text('\x0f')
             await asyncio.sleep(.15)
             opener.assert_called_once_with(file)
@@ -325,17 +325,17 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(.15)
         rendered = self.ui.app.renderer._last_screen
         x = next(x for x in range(100) if rendered.data_buffer[0][x].char == '默')
-        with patch('herdr_peek.peek.open_default') as opener:
+        with patch('herdr_quickview.quickview.open_default') as opener:
             await self.click(x, 0)
             opener.assert_called_once_with(self.file)
 
     async def test_ctrl_o_url_uses_original_url_not_file_or_line(self):
         url = 'https://www.python.org/?q=%2F#top'
         await self.launch(text=url)
-        with patch('herdr_peek.peek.read_url', return_value=('body', False)):
+        with patch('herdr_quickview.quickview.read_url', return_value=('body', False)):
             self.pipe.send_text('1')
             await asyncio.sleep(.15)
-        with patch('herdr_peek.peek.open_default') as opener:
+        with patch('herdr_quickview.quickview.open_default') as opener:
             self.pipe.send_text('\x0f')
             await asyncio.sleep(.15)
             opener.assert_called_once_with(url, url=True)
@@ -345,7 +345,7 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
         self.pipe.send_text('1')
         await asyncio.sleep(.15)
         before = self.ui.body.text
-        with patch('herdr_peek.peek.open_default', side_effect=PeekError('no association')):
+        with patch('herdr_quickview.quickview.open_default', side_effect=QuickViewError('no association')):
             self.ui.open_in_default()
             await asyncio.sleep(.1)
         self.assertIn('未确认', self.ui.status)
@@ -359,7 +359,7 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(.15)
         release = threading.Event()
         try:
-            with patch('herdr_peek.peek.open_default', side_effect=lambda _: release.wait(3)) as opener:
+            with patch('herdr_quickview.quickview.open_default', side_effect=lambda _: release.wait(3)) as opener:
                 self.ui.open_in_default()
                 await asyncio.sleep(.1)
                 self.ui.open_in_default()
@@ -383,7 +383,7 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.ui.current.path, self.file)
         self.pipe.send_text('\x1b')
         await asyncio.sleep(.1)
-        self.assertFalse(self.task.done(), 'Esc from preview must keep Peek running')
+        self.assertFalse(self.task.done(), 'Esc from preview must keep QuickView running')
         self.assertIsNone(self.ui.current)
         self.assertIs(self.ui.grid, original_grid)
         self.pipe.send_text('2')
@@ -435,7 +435,7 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
             with patch.object(NativePreview, 'open', autospec=True, side_effect=open_preview) as native:
                 self.pipe.send_text('1')
                 await asyncio.sleep(.1)
-                self.assertFalse(self.task.done(), 'Native preview must keep Peek alive behind the panel')
+                self.assertFalse(self.task.done(), 'Native preview must keep QuickView alive behind the panel')
                 self.assertTrue(self.ui.busy)
                 closed.set()
                 await asyncio.sleep(.15)
@@ -459,7 +459,7 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
         await self.launch(text=f'https://example.com/slow\n`{self.file}`', columns=140)
         release = threading.Event()
         try:
-            with patch('herdr_peek.peek.read_url', side_effect=lambda _: (release.wait(3) and 'old web body', False)):
+            with patch('herdr_quickview.quickview.read_url', side_effect=lambda _: (release.wait(3) and 'old web body', False)):
                 self.pipe.send_text('1')
                 await asyncio.sleep(.1)
                 self.assertTrue(self.ui.busy)
@@ -478,8 +478,8 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
         await self.launch(text=f'`{self.file}`\nhttps://example.com/slow', columns=140)
         release = threading.Event()
         try:
-            with patch('herdr_peek.peek.open_default', side_effect=lambda _: release.wait(3)), \
-                    patch('herdr_peek.peek.read_url', side_effect=lambda _: (release.wait(3) and 'new web body', False)):
+            with patch('herdr_quickview.quickview.open_default', side_effect=lambda _: release.wait(3)), \
+                    patch('herdr_quickview.quickview.read_url', side_effect=lambda _: (release.wait(3) and 'new web body', False)):
                 self.pipe.send_text('1')
                 await asyncio.sleep(.1)
                 self.pipe.send_text('\x0f')
@@ -502,7 +502,7 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
         await self.launch(text=f'`{self.file}`\n`{other}`', columns=140)
         release = threading.Event()
         try:
-            with patch('herdr_peek.peek.clipboard_write', side_effect=lambda _: release.wait(3)) as copy:
+            with patch('herdr_quickview.quickview.clipboard_write', side_effect=lambda _: release.wait(3)) as copy:
                 self.pipe.send_text('1')
                 await asyncio.sleep(.1)
                 self.ui.copy_path()
@@ -573,9 +573,9 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(self.ui.body.text, file.read_text())
 
     async def test_ctrl_p_saves_mode_and_forces_herdr_for_file(self):
-        from herdr_peek.settings import load_mode
+        from herdr_quickview.settings import load_mode
         await self.launch(native=True)
-        with patch('herdr_peek.peek.native_quicklook_available', return_value=True), patch('herdr_peek.peek.local_macos', return_value=True):
+        with patch('herdr_quickview.quickview.native_quicklook_available', return_value=True), patch('herdr_quickview.quickview.local_macos', return_value=True):
             self.pipe.send_text('\x10')
             await asyncio.sleep(.1)
         self.assertFalse(self.ui.native_mode)
@@ -587,27 +587,27 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('needle', self.ui.body.text)
 
     async def test_clickable_footer_switches_and_saves_mode(self):
-        from herdr_peek.settings import load_mode
+        from herdr_quickview.settings import load_mode
         await self.launch(native=True)
-        with patch('herdr_peek.peek.native_quicklook_available', return_value=True), patch('herdr_peek.peek.local_macos', return_value=True):
+        with patch('herdr_quickview.quickview.native_quicklook_available', return_value=True), patch('herdr_quickview.quickview.local_macos', return_value=True):
             await self.click(2, self.ui.footer_row())
         self.assertFalse(self.ui.native_mode)
         self.assertEqual(load_mode(), 'herdr')
 
     async def test_saved_herdr_mode_and_non_mac_override(self):
-        from herdr_peek.settings import config_path
+        from herdr_quickview.settings import config_path
         config_path().parent.mkdir()
         config_path().write_text('preview_mode = "herdr"\n')
         await self.launch(native=True)
         self.assertFalse(self.ui.native_mode)
-        with patch('herdr_peek.peek.local_macos', return_value=False), patch('herdr_peek.peek.save_mode') as save:
+        with patch('herdr_quickview.quickview.local_macos', return_value=False), patch('herdr_quickview.quickview.save_mode') as save:
             self.ui.toggle_mode()
             save.assert_not_called()
             self.assertIn('仅支持本机 macOS', self.ui.status)
 
     async def test_url_digit_uses_native_explicit_argument_without_file_reads(self):
         await self.launch(native=True, text='打开 https://example.com/page?q=x#part')
-        with patch.object(self.ui.native, 'wait_closed'), patch.object(self.ui.native, 'open') as native, patch('herdr_peek.peek.read_file') as file_read, patch('herdr_peek.peek.read_url') as web_read:
+        with patch.object(self.ui.native, 'wait_closed'), patch.object(self.ui.native, 'open') as native, patch('herdr_quickview.quickview.read_file') as file_read, patch('herdr_quickview.quickview.read_url') as web_read:
             self.pipe.send_text('1')
             await asyncio.sleep(.15)
             self.assertFalse(self.task.done())
@@ -618,21 +618,21 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
     async def test_url_mouse_uses_herdr_body_and_copies_original_link(self):
         url = 'https://example.com/page?q=%2F#part'
         await self.launch(text='打开 '+url)
-        with patch('herdr_peek.peek.read_url', return_value=('网页标题\n正文\n链接', False)) as read, patch('herdr_peek.peek.read_file') as file_read, patch('herdr_peek.peek.get_lexer_for_filename') as lexer:
+        with patch('herdr_quickview.quickview.read_url', return_value=('网页标题\n正文\n链接', False)) as read, patch('herdr_quickview.quickview.read_file') as file_read, patch('herdr_quickview.quickview.get_lexer_for_filename') as lexer:
             await self.click(get_cwidth('打开 ')+2, 0)
             read.assert_called_once_with(url)
             file_read.assert_not_called()
             lexer.assert_not_called()
             self.assertIn('网页标题', self.ui.body.text)
             self.assertIn('JavaScript', self.ui.status)
-        with patch('herdr_peek.peek.clipboard_write') as copy:
+        with patch('herdr_quickview.quickview.clipboard_write') as copy:
             self.ui.copy_path()
             await asyncio.sleep(.1)
             copy.assert_called_once_with(url)
 
     async def test_url_native_failure_falls_back_without_changing_saved_mode(self):
         await self.launch(native=True, text='https://example.com/')
-        with patch.object(self.ui.native, 'open', side_effect=PeekError('焦点失败')), patch('herdr_peek.peek.read_url', return_value=('网页正文', False)), patch('herdr_peek.peek.save_mode') as save:
+        with patch.object(self.ui.native, 'open', side_effect=QuickViewError('焦点失败')), patch('herdr_quickview.quickview.read_url', return_value=('网页正文', False)), patch('herdr_quickview.quickview.save_mode') as save:
             self.pipe.send_text('1')
             await asyncio.sleep(.15)
             self.assertIn('网页正文', self.ui.body.text)
@@ -641,7 +641,7 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
 
     async def test_url_herdr_failure_remains_in_popup_without_app_launch(self):
         await self.launch(text='https://example.com/')
-        with patch('herdr_peek.peek.read_url', side_effect=PeekError('HTTP 404')), patch.object(self.ui.native, 'open') as native, patch('herdr_peek.peek.cli') as cli:
+        with patch('herdr_quickview.quickview.read_url', side_effect=QuickViewError('HTTP 404')), patch.object(self.ui.native, 'open') as native, patch('herdr_quickview.quickview.cli') as cli:
             self.pipe.send_text('1')
             await asyncio.sleep(.15)
             self.assertIn('HTTP 404', self.ui.body.text)
@@ -652,11 +652,11 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
         await self.launch(text='https://example.com/')
         release = threading.Event()
         try:
-            with patch('herdr_peek.peek.read_url', side_effect=lambda _: (release.wait(3) and 'body', False)):
+            with patch('herdr_quickview.quickview.read_url', side_effect=lambda _: (release.wait(3) and 'body', False)):
                 self.pipe.send_text('1')
                 await asyncio.sleep(.1)
                 self.assertTrue(self.ui.busy)
-                with patch('herdr_peek.peek.save_mode') as save:
+                with patch('herdr_quickview.quickview.save_mode') as save:
                     self.ui.toggle_mode()
                     save.assert_not_called()
                 self.pipe.send_text('\x1b')
@@ -671,7 +671,7 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
         await self.launch(text='https://example.com/')
         release = threading.Event()
         try:
-            with patch('herdr_peek.peek.WEB_TIMEOUT', .15), patch('herdr_peek.peek.read_url', side_effect=lambda _: (release.wait(3) and 'body', False)):
+            with patch('herdr_quickview.quickview.WEB_TIMEOUT', .15), patch('herdr_quickview.quickview.read_url', side_effect=lambda _: (release.wait(3) and 'body', False)):
                 self.pipe.send_text('1')
                 await asyncio.sleep(.3)
                 self.assertFalse(self.ui.busy)
@@ -681,7 +681,7 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
 
     async def test_mode_save_error_does_not_change_ui_mode(self):
         await self.launch(native=True)
-        with patch('herdr_peek.peek.local_macos', return_value=True), patch('herdr_peek.peek.native_quicklook_available', return_value=True), patch('herdr_peek.peek.save_mode', side_effect=PeekError('只读目录')):
+        with patch('herdr_quickview.quickview.local_macos', return_value=True), patch('herdr_quickview.quickview.native_quicklook_available', return_value=True), patch('herdr_quickview.quickview.save_mode', side_effect=QuickViewError('只读目录')):
             self.ui.toggle_mode()
             self.assertTrue(self.ui.native_mode)
             self.assertIn('只读目录', self.ui.status)
@@ -693,7 +693,7 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.ui.current)
         await self.click(1, 2)
         self.assertIsNone(self.ui.current, 'Ordinary text must not open a file')
-        with patch('herdr_peek.peek.rpc') as rpc, patch('herdr_peek.peek.cli') as cli:
+        with patch('herdr_quickview.quickview.rpc') as rpc, patch('herdr_quickview.quickview.cli') as cli:
             await self.click(get_cwidth('修改了 `')+1, 1)
             self.assertEqual(self.ui.current, Reference(self.file, 3))
             self.assertIn('needle', self.ui.body.text)
@@ -721,7 +721,7 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
         await self.launch(text=text, columns=160)
         await self.click(2, 1)
         self.assertEqual(self.ui.current.path, file)
-        with patch('herdr_peek.peek.clipboard_write') as copy:
+        with patch('herdr_quickview.quickview.clipboard_write') as copy:
             self.ui.copy_path()
             await asyncio.sleep(.1)
             copy.assert_called_once_with(str(file))
@@ -753,7 +753,7 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
         self.pipe.send_text('1')
         await asyncio.sleep(.15)
         self.assertEqual(self.ui.current.path, self.file)
-        with patch('herdr_peek.peek.clipboard_write') as copy:
+        with patch('herdr_quickview.quickview.clipboard_write') as copy:
             self.ui.copy_path()
             await asyncio.sleep(.1)
             copy.assert_called_once_with(str(self.file))
@@ -807,7 +807,7 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
 
     async def test_native_focus_failure_falls_back_to_herdr_body(self):
         await self.launch(native=True)
-        with patch.object(self.ui.native, 'open', side_effect=PeekError('未获得焦点')):
+        with patch.object(self.ui.native, 'open', side_effect=QuickViewError('未获得焦点')):
             await self.click(get_cwidth('修改了 `')+1, 1)
             self.assertIn('needle', self.ui.body.text)
             self.assertIn('已改用 Herdr', self.ui.status)
@@ -854,7 +854,7 @@ class PeekUITests(unittest.IsolatedAsyncioTestCase):
     async def test_copy_uses_real_path_without_terminal_wraps(self):
         await self.launch(columns=60, rows=15)
         await self.click(get_cwidth('修改了 `')+1, 1)
-        with patch('herdr_peek.peek.clipboard_write') as copy:
+        with patch('herdr_quickview.quickview.clipboard_write') as copy:
             self.ui.copy_path()
             await asyncio.sleep(.1)
             copy.assert_called_once_with(str(self.file))

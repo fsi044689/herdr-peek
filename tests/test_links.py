@@ -3,12 +3,12 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 
-from herdr_peek.screen import Screen
-from test_peek import snapshot
+from herdr_quickview.screen import Screen
+from test_quickview import snapshot
 
 
 def setUpModule():
-    language = patch("herdr_peek.i18n._language", "zh")
+    language = patch("herdr_quickview.i18n._language", "zh")
     language.start()
     unittest.addModuleCleanup(language.stop)
 
@@ -21,7 +21,7 @@ class LinkRecognitionTests(unittest.TestCase):
             self.assertEqual(screen.hits[0].url, 'https://example.com/page?q=one#part')
 
     def test_url_matrix_preserves_query_encoding_unicode_and_punctuation(self):
-        from herdr_peek.links import url_spans
+        from herdr_quickview.links import url_spans
         urls = ['https://example.com/a?q=x&v=%E4%B8%AD#L2', 'HTTPS://example.com/A',
                 'http://localhost:3000/a', 'http://[::1]:8080/a',
                 'https://example.com/中文?q=你好', 'https://en.wikipedia.org/wiki/Foo_(bar)',
@@ -38,21 +38,21 @@ class LinkRecognitionTests(unittest.TestCase):
         self.assertEqual(next(url_spans('https://example.com/a).'))[0].url, 'https://example.com/a')
 
     def test_invalid_schemes_credentials_and_hosts_are_not_targets(self):
-        from herdr_peek.links import url_spans
+        from herdr_quickview.links import url_spans
         for value in ('ftp://example.com/a', 'javascript:alert(1)', 'www.example.com', 'xhttp://example.com',
                       'https:///nohost', 'http://[invalid]', 'http://host:bad', 'http://host:99999',
                       'https://user:pass@example.com/path'):
             self.assertEqual(list(url_spans(value)), [], value)
 
     def test_unclosed_wrapper_never_joins_following_prose(self):
-        from herdr_peek.links import url_spans
+        from herdr_quickview.links import url_spans
         for left in ('(', '<', '`', '"', "'"):
             text = f'see {left}https://example.com/docs\n  next line here'
             self.assertEqual(next(url_spans(text))[0].url, 'https://example.com/docs')
 
     def test_links_mask_embedded_real_files_and_keep_screen_order(self):
-        from herdr_peek.links import URLReference
-        from herdr_peek.screen import Reference
+        from herdr_quickview.links import URLReference
+        from herdr_quickview.screen import Reference
         with tempfile.TemporaryDirectory() as d:
             root = Path(d).resolve()
             file = root/'bar'
@@ -64,7 +64,7 @@ class LinkRecognitionTests(unittest.TestCase):
             self.assertEqual(screen.hits, [Reference(file), *[URLReference(u) for u in urls], Reference(file), URLReference(urls[0])])
 
     def test_every_soft_wrap_position_keeps_full_url_and_hit_coordinates(self):
-        from herdr_peek.links import URLReference
+        from herdr_quickview.links import URLReference
         url = 'https://example.com/中文?q=%E4%B8%AD&name=a#section'
         logical = '打开 <'+url+'> 结束'
         for cut in range(1, len(logical)):
@@ -74,7 +74,7 @@ class LinkRecognitionTests(unittest.TestCase):
             self.assertTrue(any(c and c[2] == 0 for row in screen.cells(200, 24) for c in row))
 
     def test_explicit_indented_hard_wrap_and_bare_real_newline(self):
-        from herdr_peek.links import url_spans
+        from herdr_quickview.links import url_spans
         for left, right in (('<', '>'), ('[link](', ')'), ('`', '`')):
             text = left+'https://example.com/very\n  long?q=test'+right
             found = list(url_spans(text))
@@ -86,8 +86,8 @@ class LinkRecognitionTests(unittest.TestCase):
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
-from herdr_peek.core import MAX_TEXT, PeekError
-from herdr_peek.links import read_url, request_url, WebRedirect
+from herdr_quickview.core import MAX_TEXT, QuickViewError
+from herdr_quickview.links import read_url, request_url, WebRedirect
 from urllib.request import Request
 
 
@@ -161,11 +161,11 @@ class WebPreviewTests(unittest.TestCase):
 
     def test_binary_http_errors_and_unsafe_redirects_are_explicit(self):
         for path, message in (('/image', 'image/png'), ('/pdf', 'application/pdf'), ('/zip', 'application/zip'), ('/404', 'HTTP 404'), ('/bad-redirect', '重定向目标不是 HTTP')):
-            with self.subTest(path=path), self.assertRaisesRegex(PeekError, message):
+            with self.subTest(path=path), self.assertRaisesRegex(QuickViewError, message):
                 read_url(self.base+path)
         handler = WebRedirect()
         for url in ('ftp://example.com/x', 'file:///etc/hosts', 'data:text/plain,hello'):
-            with self.assertRaises(PeekError):
+            with self.assertRaises(QuickViewError):
                 handler.redirect_request(Request(self.base), None, 302, '', {}, url)
 
     def test_multibyte_limit_does_not_emit_broken_character(self):
@@ -181,6 +181,6 @@ class WebPreviewTests(unittest.TestCase):
         self.assertEqual(request_url('http://[::1]:8080/a'), 'http://[::1]:8080/a')
 
     def test_scanning_does_not_request_network(self):
-        with patch('herdr_peek.links.build_opener') as opener:
+        with patch('herdr_quickview.links.build_opener') as opener:
             self.assertEqual(len(Screen(snapshot(self.base+'/html'), Path('/tmp')).hits), 1)
             opener.assert_not_called()

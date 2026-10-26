@@ -12,9 +12,9 @@ from unittest.mock import patch
 from PIL import Image, features
 from prompt_toolkit.output import DummyOutput
 
-from herdr_peek.images import (BACKGROUND, MAX_IMAGE_BYTES, ImageCanvas, ImageError,
+from herdr_quickview.images import (BACKGROUND, MAX_IMAGE_BYTES, ImageCanvas, ImageError,
                                ImagePreview, cell_pixels, decode_file, is_image, load_image)
-import test_peek as peek_tests
+import test_quickview as quickview_tests
 
 
 class ImageTests(unittest.IsolatedAsyncioTestCase):
@@ -69,7 +69,7 @@ class ImageTests(unittest.IsolatedAsyncioTestCase):
         Image.new('RGB', (20, 20)).save(path)
         previous = Image.MAX_IMAGE_PIXELS
         self.addCleanup(setattr, Image, 'MAX_IMAGE_PIXELS', previous)
-        with patch('herdr_peek.images.MAX_IMAGE_PIXELS', 200), \
+        with patch('herdr_quickview.images.MAX_IMAGE_PIXELS', 200), \
                 patch.object(Image.Image, 'load', side_effect=AssertionError('must not decode')):
             with self.assertRaisesRegex(ImageError, 'pixel_limit'):
                 decode_file(path)
@@ -93,7 +93,7 @@ class ImageTests(unittest.IsolatedAsyncioTestCase):
         worker = self.root/'invalid.py'
         for reply in ('not json', '{}', '{"png": "broken", "width": 1, "height": 1, "format": "PNG"}'):
             worker.write_text(f'print({reply!r})\n')
-            with patch('herdr_peek.images.__file__', str(worker)):
+            with patch('herdr_quickview.images.__file__', str(worker)):
                 with self.assertRaisesRegex(ImageError, '^decode$'):
                     await load_image(self.root/'unused')
 
@@ -104,7 +104,7 @@ class BlockPillow:
         if fullname == 'PIL' or fullname.startswith('PIL.'):
             raise ModuleNotFoundError('Pillow unavailable')
 sys.meta_path.insert(0, BlockPillow())
-from herdr_peek.peek import PeekUI
+from herdr_quickview.quickview import QuickViewUI
 """
         result = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True,
                                 cwd=Path(__file__).resolve().parent.parent)
@@ -117,8 +117,8 @@ from herdr_peek.peek import PeekUI
                           "Path(sys.argv[1]).write_text(str(os.getpid()))\ntime.sleep(30)\n")
         for timeout in (False, True, 'double_cancel'):
             marker = self.root/str(timeout)
-            with patch('herdr_peek.images.__file__', str(worker)), \
-                    patch('herdr_peek.images.IMAGE_TIMEOUT', .2 if timeout is True else 8):
+            with patch('herdr_quickview.images.__file__', str(worker)), \
+                    patch('herdr_quickview.images.IMAGE_TIMEOUT', .2 if timeout is True else 8):
                 task = asyncio.create_task(load_image(marker))
                 for _ in range(100):
                     if marker.exists():
@@ -190,12 +190,12 @@ from herdr_peek.peek import PeekUI
 
 
 class ImageUITests(unittest.IsolatedAsyncioTestCase):
-    asyncTearDown = peek_tests.PeekUITests.asyncTearDown
-    launch = peek_tests.PeekUITests.launch
-    click = peek_tests.PeekUITests.click
+    asyncTearDown = quickview_tests.QuickViewUITests.asyncTearDown
+    launch = quickview_tests.QuickViewUITests.launch
+    click = quickview_tests.QuickViewUITests.click
 
     async def asyncSetUp(self):
-        await peek_tests.PeekUITests.asyncSetUp(self)
+        await quickview_tests.QuickViewUITests.asyncSetUp(self)
         self.picture = self.root/'截图 preview.png'
         Image.new('RGB', (320, 180), '#ff5500').save(self.picture)
 
@@ -220,7 +220,7 @@ class ImageUITests(unittest.IsolatedAsyncioTestCase):
         self.pipe.send_text('\x06')
         await asyncio.sleep(.05)
         self.assertIs(self.ui.app.layout.current_control, self.ui.image_window.content)
-        with patch('herdr_peek.peek.clipboard_write') as copy:
+        with patch('herdr_quickview.quickview.clipboard_write') as copy:
             self.ui.copy_path()
             await asyncio.sleep(.05)
             copy.assert_called_once_with(str(self.picture))
@@ -241,7 +241,7 @@ class ImageUITests(unittest.IsolatedAsyncioTestCase):
 
     async def test_graphics_moves_with_sidebar_reuploads_on_clear_and_cleans_exit(self):
         commands = []
-        with patch('herdr_peek.peek.cell_pixels', return_value=(8, 15)):
+        with patch('herdr_quickview.quickview.cell_pixels', return_value=(8, 15)):
             await self.launch(text=f'"{self.picture}"\n"{self.file}"', columns=100)
             self.output.write_raw = commands.append
             self.pipe.send_text('1')
@@ -279,7 +279,7 @@ class ImageUITests(unittest.IsolatedAsyncioTestCase):
                 await asyncio.sleep(10)
             finally:
                 stopped.set()
-        with patch('herdr_peek.peek.load_image', side_effect=slow_image):
+        with patch('herdr_quickview.quickview.load_image', side_effect=slow_image):
             await self.launch(text=f'"{self.picture}"\n"{self.file}"')
             self.pipe.send_text('1')
             await asyncio.wait_for(started.wait(), 2)

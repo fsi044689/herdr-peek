@@ -2,14 +2,14 @@
 #import <Quartz/Quartz.h>
 #include <unistd.h>
 
-@interface PeekApplication : NSApplication <QLPreviewPanelDataSource, QLPreviewPanelDelegate>
+@interface QuickViewApplication : NSApplication <QLPreviewPanelDataSource, QLPreviewPanelDelegate>
 @property(strong) NSURL *fileURL;
 @property(strong) QLPreviewPanel *panel;
 @property BOOL reportedReady;
 @property NSUInteger checks;
 @end
 
-@implementation PeekApplication
+@implementation QuickViewApplication
 - (void)activatePreview {
     if (@available(macOS 14.0, *)) [self activate];
     else [self activateIgnoringOtherApps:YES];
@@ -85,7 +85,7 @@ int main(int argc, const char *argv[]) {
             url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:argv[1]]];
             if (![url checkResourceIsReachableAndReturnError:nil]) return 2;
         } else return 2;
-        PeekApplication *app = [PeekApplication sharedApplication];
+        QuickViewApplication *app = [QuickViewApplication sharedApplication];
         app.fileURL = url;
         [app setActivationPolicy:NSApplicationActivationPolicyAccessory];
         [app run];

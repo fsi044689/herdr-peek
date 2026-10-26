@@ -7,7 +7,7 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-from .core import PeekError
+from .core import QuickViewError
 from .i18n import tr
 
 
@@ -21,7 +21,7 @@ def config_path():
         return Path(directory) / 'config.toml'
     herdr_config = os.environ.get('HERDR_CONFIG_PATH')
     root = Path(herdr_config).parent if herdr_config else Path(os.environ.get('XDG_CONFIG_HOME', Path.home()/'.config'))/'herdr'
-    return root/'plugins/config/sylar.herdr-peek/config.toml'
+    return root/'plugins/config/sylar.herdr-quickview/config.toml'
 
 
 def read_settings():
@@ -30,7 +30,7 @@ def read_settings():
     except FileNotFoundError:
         return {}
     except (OSError, ValueError) as exc:
-        raise PeekError(tr('无法读取 QuickView 设置：{error}', error=exc)) from exc
+        raise QuickViewError(tr('无法读取 QuickView 设置：{error}', error=exc)) from exc
     return data
 
 
@@ -38,28 +38,28 @@ def load_mode():
     default = 'macos' if local_macos() else 'herdr'
     mode = read_settings().get('preview_mode', default)
     if mode not in ('macos', 'herdr'):
-        raise PeekError(tr('preview_mode 只能是 "macos" 或 "herdr"'))
+        raise QuickViewError(tr('preview_mode 只能是 "macos" 或 "herdr"'))
     return mode
 
 
 def load_language():
     language = read_settings().get('language', 'en')
     if language not in ('en', 'zh'):
-        raise PeekError(tr('language 只能是 "en" 或 "zh"'))
+        raise QuickViewError(tr('language 只能是 "en" 或 "zh"'))
     return language
 
 
 def save_mode(mode):
     if mode not in ('macos', 'herdr'):
-        raise PeekError(tr('无效的预览方式'))
+        raise QuickViewError(tr('无效的预览方式'))
     if mode == 'macos' and not local_macos():
-        raise PeekError(tr('系统 Quick Look 仅支持本机 macOS；此环境使用 Herdr 预览'))
+        raise QuickViewError(tr('系统 Quick Look 仅支持本机 macOS；此环境使用 Herdr 预览'))
     save_setting('preview_mode', mode, 'macos|herdr')
 
 
 def save_language(language):
     if language not in ('en', 'zh'):
-        raise PeekError(tr('language 只能是 "en" 或 "zh"'))
+        raise QuickViewError(tr('language 只能是 "en" 或 "zh"'))
     save_setting('language', language, 'en|zh')
 
 
@@ -82,9 +82,9 @@ def save_setting(key, value, choices):
         else:
             text = line + '\n' + text
         if tomllib.loads(text).get(key) != value:
-            raise PeekError(tr('此 {key} 写法无法自动修改，请使用普通引号；原设置未改动', key=key))
+            raise QuickViewError(tr('此 {key} 写法无法自动修改，请使用普通引号；原设置未改动', key=key))
         path.parent.mkdir(parents=True, exist_ok=True)
-        fd, name = tempfile.mkstemp(dir=path.parent, prefix='.peek-', suffix='.toml')
+        fd, name = tempfile.mkstemp(dir=path.parent, prefix='.quickview-', suffix='.toml')
         try:
             with os.fdopen(fd, 'w') as stream:
                 stream.write(text)
@@ -92,4 +92,4 @@ def save_setting(key, value, choices):
         finally:
             Path(name).unlink(missing_ok=True)
     except (OSError, ValueError) as exc:
-        raise PeekError(tr('无法保存设置：{error}', error=exc)) from exc
+        raise QuickViewError(tr('无法保存设置：{error}', error=exc)) from exc

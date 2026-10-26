@@ -11,7 +11,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from .i18n import tr
 
-from .core import MAX_TEXT, PeekError, clean_text
+from .core import MAX_TEXT, QuickViewError, clean_text
 
 WEB_TIMEOUT = 8
 URL_START = re.compile(r'(?<![A-Za-z0-9_])https?://', re.I)
@@ -79,7 +79,7 @@ def url_spans(text):
 
 def request_url(url):
     if not valid_url(url):
-        raise PeekError(tr('仅支持不含账号密码的 HTTP(S) 链接'))
+        raise QuickViewError(tr('仅支持不含账号密码的 HTTP(S) 链接'))
     parts = urlsplit(url)
     host = parts.hostname.encode('idna').decode('ascii')
     if ':' in host:
@@ -95,14 +95,14 @@ class WebRedirect(HTTPRedirectHandler):
         target = headers.get('location') or headers.get('uri')
         if target and urlsplit(urljoin(req.full_url, target)).scheme.lower() not in ('http', 'https'):
             fp.close()
-            raise PeekError(tr('重定向目标不是 HTTP(S) 地址'))
+            raise QuickViewError(tr('重定向目标不是 HTTP(S) 地址'))
         return super().http_error_302(req, fp, code, msg, headers)
 
     http_error_301 = http_error_303 = http_error_307 = http_error_308 = http_error_302
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         if urlsplit(newurl).scheme.lower() not in ('http', 'https'):
-            raise PeekError(tr('重定向目标不是 HTTP(S) 地址'))
+            raise QuickViewError(tr('重定向目标不是 HTTP(S) 地址'))
         return super().redirect_request(req, fp, code, msg, headers, request_url(newurl))
 
 
@@ -169,13 +169,13 @@ def read_url(url):
         with build_opener(WebRedirect()).open(request, timeout=WEB_TIMEOUT) as response:
             kind = response.headers.get_content_type()
             if kind not in ('text/html', 'application/xhtml+xml', 'text/plain', 'application/json'):
-                raise PeekError(tr("Herdr 网页预览暂不支持 {kind}（图片、PDF 等请在 macOS 使用系统速览）", kind=kind))
+                raise QuickViewError(tr("Herdr 网页预览暂不支持 {kind}（图片、PDF 等请在 macOS 使用系统速览）", kind=kind))
             if response.headers.get('Content-Encoding', 'identity').lower() != 'identity':
-                raise PeekError(tr('服务端返回压缩内容，Herdr 当前无法读取此网页'))
+                raise QuickViewError(tr('服务端返回压缩内容，Herdr 当前无法读取此网页'))
             data = bytearray()
             while len(data) <= MAX_TEXT:
                 if time.monotonic() - started >= WEB_TIMEOUT:
-                    raise PeekError(tr('网页读取超时'))
+                    raise QuickViewError(tr('网页读取超时'))
                 chunk = response.read1(min(65536, MAX_TEXT + 1 - len(data)))
                 if not chunk:
                     break
@@ -198,13 +198,13 @@ def read_url(url):
                 text = parser.render()
             else:
                 if '\x00' in text:
-                    raise PeekError(tr('服务端返回了二进制内容，无法显示正文'))
+                    raise QuickViewError(tr('服务端返回了二进制内容，无法显示正文'))
                 text = clean_text(text)
             if request_url(url) != final_url:
                 text = tr("最终地址：{url}\n\n", url=final_url) + text
             return text, truncated
     except HTTPError as exc:
         exc.close()
-        raise PeekError(tr("网页请求失败：HTTP {code}", code=exc.code)) from exc
+        raise QuickViewError(tr("网页请求失败：HTTP {code}", code=exc.code)) from exc
     except (URLError, OSError, ValueError) as exc:
-        raise PeekError(tr("网页读取失败：{error}", error=exc)) from exc
+        raise QuickViewError(tr("网页读取失败：{error}", error=exc)) from exc

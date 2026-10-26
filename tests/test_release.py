@@ -11,8 +11,8 @@ from unittest.mock import patch
 
 from prompt_toolkit.data_structures import Size
 
-from herdr_peek.i18n import set_language
-from herdr_peek.settings import config_path
+from herdr_quickview.i18n import set_language
+from herdr_quickview.settings import config_path
 import test_i18n as language_tests
 
 
@@ -55,7 +55,7 @@ class StartupTests(unittest.TestCase):
         self.assertIn('selected-python-3.11', result.stderr)
 
     def test_launch_without_virtualenv_explains_how_to_install(self):
-        result = subprocess.run(['sh', str(ROOT/'launch.sh'), 'peek'], cwd=self.root,
+        result = subprocess.run(['sh', str(ROOT/'launch.sh'), 'quickview'], cwd=self.root,
                                 env={**os.environ, 'HERDR_PLUGIN_ROOT': str(self.root)},
                                 capture_output=True, text=True, timeout=3)
         self.assertNotEqual(result.returncode, 0)
@@ -63,14 +63,14 @@ class StartupTests(unittest.TestCase):
         self.assertNotIn('Traceback', result.stderr)
 
     def test_bad_language_or_config_does_not_abort_before_popup_can_show_error(self):
-        spec = importlib.util.spec_from_file_location('peek_entry', ROOT/'run.py')
+        spec = importlib.util.spec_from_file_location('quickview_entry', ROOT/'run.py')
         entry = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(entry)
         for content in ('language = "fr"\n', '[broken'):
             (self.root/'config.toml').write_text(content)
             with patch.dict(os.environ, {'HERDR_PLUGIN_CONFIG_DIR': str(self.root)}), \
-                    patch.object(sys, 'argv', ['run.py', 'peek']), \
-                    patch('herdr_peek.peek.launch_peek') as launch:
+                    patch.object(sys, 'argv', ['run.py', 'quickview']), \
+                    patch('herdr_quickview.quickview.launch_quickview') as launch:
                 entry.main()
                 launch.assert_called_once_with()
             self.assertEqual((self.root/'config.toml').read_text(), content)

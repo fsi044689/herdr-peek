@@ -5,30 +5,30 @@ if sys.version_info < (3, 11):
     print('Herdr QuickView requires Python 3.11+. Rebuild with PYTHON=python3.11 sh bootstrap.sh.', file=sys.stderr)
     sys.exit(1)
 
-from herdr_peek.i18n import set_language, tr
-from herdr_peek.settings import load_language
+from herdr_quickview.i18n import set_language, tr
+from herdr_quickview.settings import load_language
 
-from herdr_peek.core import PeekError
+from herdr_quickview.core import QuickViewError
 
 
 def main():
     try:
         set_language(load_language())
-    except PeekError:
+    except QuickViewError:
         set_language('en')
-    if len(sys.argv) == 2 and sys.argv[1] == "peek":
-        from herdr_peek.peek import launch_peek
-        launch_peek()
-    elif len(sys.argv) == 2 and sys.argv[1] == "peek-ui":
-        from herdr_peek.peek import main as peek_main
-        peek_main()
+    if len(sys.argv) == 2 and sys.argv[1] == "quickview":
+        from herdr_quickview.quickview import launch_quickview
+        launch_quickview()
+    elif len(sys.argv) == 2 and sys.argv[1] == "quickview-ui":
+        from herdr_quickview.quickview import main as quickview_main
+        quickview_main()
     else:
-        raise PeekError(tr("用法：python3 run.py peek|peek-ui"))
+        raise QuickViewError(tr("用法：python3 run.py quickview|quickview-ui"))
 
 
 if __name__ == "__main__":
     try:
         main()
-    except (PeekError, ImportError) as exc:
+    except (QuickViewError, ImportError) as exc:
         print(f"Herdr QuickView: {exc}", file=sys.stderr)
         sys.exit(1)

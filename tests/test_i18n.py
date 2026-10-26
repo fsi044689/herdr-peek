@@ -9,10 +9,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from herdr_peek.core import PeekError, read_file
-from herdr_peek.i18n import ENGLISH, get_language, set_language, tr
-from herdr_peek.settings import config_path, load_language, load_mode, save_language
-import test_peek as peek_tests
+from herdr_quickview.core import QuickViewError, read_file
+from herdr_quickview.i18n import ENGLISH, get_language, set_language, tr
+from herdr_quickview.settings import config_path, load_language, load_mode, save_language
+import test_quickview as quickview_tests
 import test_settings as settings_tests
 
 
@@ -42,21 +42,21 @@ class LanguageSettingsTests(unittest.TestCase):
     def test_invalid_value_or_broken_config_does_not_overwrite_settings(self):
         for original in ('language = "fr"\n', 'bad [', 'preview_mode = "invalid"\n'):
             config_path().write_text(original)
-            with self.assertRaises(PeekError):
+            with self.assertRaises(QuickViewError):
                 save_language('zh')
             self.assertEqual(config_path().read_text(), original)
         config_path().write_text('preview_mode = "herdr"\n')
-        with self.assertRaises(PeekError):
+        with self.assertRaises(QuickViewError):
             save_language('ZH')
         self.assertEqual(config_path().read_text(), 'preview_mode = "herdr"\n')
 
     def test_write_failure_keeps_original_file_and_cleans_temporary_file(self):
         original = 'preview_mode = "herdr"\n'
         config_path().write_text(original)
-        with patch('herdr_peek.settings.os.replace', side_effect=OSError('read-only')), self.assertRaises(PeekError):
+        with patch('herdr_quickview.settings.os.replace', side_effect=OSError('read-only')), self.assertRaises(QuickViewError):
             save_language('zh')
         self.assertEqual(config_path().read_text(), original)
-        self.assertEqual(list(Path(self.temp.name).glob('.peek-*')), [])
+        self.assertEqual(list(Path(self.temp.name).glob('.quickview-*')), [])
 
     def test_cli_loads_preference_before_showing_usage_errors(self):
         root = Path(__file__).resolve().parents[1]
@@ -85,7 +85,7 @@ class TranslationTests(unittest.TestCase):
 
     def test_code_message_templates_all_exist_in_catalogue(self):
         root = Path(__file__).resolve().parents[1]
-        for path in [*root.glob('herdr_peek/*.py'), root/'run.py']:
+        for path in [*root.glob('herdr_quickview/*.py'), root/'run.py']:
             for node in ast.walk(ast.parse(path.read_text())):
                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == 'tr':
                     argument = node.args[0]
@@ -104,12 +104,12 @@ class TranslationTests(unittest.TestCase):
 
 
 class LanguageUITests(unittest.IsolatedAsyncioTestCase):
-    asyncTearDown = peek_tests.PeekUITests.asyncTearDown
-    launch = peek_tests.PeekUITests.launch
-    click = peek_tests.PeekUITests.click
+    asyncTearDown = quickview_tests.QuickViewUITests.asyncTearDown
+    launch = quickview_tests.QuickViewUITests.launch
+    click = quickview_tests.QuickViewUITests.click
 
     async def asyncSetUp(self):
-        await peek_tests.PeekUITests.asyncSetUp(self)
+        await quickview_tests.QuickViewUITests.asyncSetUp(self)
         previous = get_language()
         set_language('en')
         self.addCleanup(set_language, previous)
@@ -172,13 +172,13 @@ class LanguageUITests(unittest.IsolatedAsyncioTestCase):
 
     async def test_failed_save_or_busy_does_not_change_language(self):
         await self.launch()
-        with patch('herdr_peek.peek.save_language', side_effect=PeekError('read-only')):
+        with patch('herdr_quickview.quickview.save_language', side_effect=QuickViewError('read-only')):
             self.pipe.send_text('\x0c')
             await asyncio.sleep(.15)
         self.assertEqual(get_language(), 'en')
         self.assertEqual(self.ui.back_button.text, 'Back')
         self.assertIn('read-only', self.ui.status)
-        with patch('herdr_peek.peek.save_language') as save:
+        with patch('herdr_quickview.quickview.save_language') as save:
             self.ui.busy = True
             self.pipe.send_text('\x0c')
             await asyncio.sleep(.15)

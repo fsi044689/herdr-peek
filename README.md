@@ -19,7 +19,6 @@ Preview file paths and HTTP(S) links already visible in a Herdr terminal. Select
 
 The terminal images are exported from QuickView's real UI renderer with sample CLI output; the Quick Look image is a native macOS window screenshot. Terminal colors and system previews depend on your setup.
 
-Herdr QuickView was previously named Herdr Peek. Its stable plugin ID (`sylar.herdr-peek`), action (`peek`), and settings directory are retained so existing shortcuts and preferences keep working. The original `v0.1.0` tag contains the earlier name; the default-branch installation below contains these updates.
 
 ## Requirements and status
 
@@ -48,14 +47,14 @@ The installer looks for a compatible Python before creating the plugin's own `.v
 PYTHON=python3.11 sh bootstrap.sh
 ```
 
-Re-running the installer repairs an outdated or broken plugin virtual environment. Settings live outside the checkout and are preserved. If QuickView does not appear, re-run the installer and inspect its output; the action log is available through `herdr plugin log list --plugin sylar.herdr-peek`.
+Re-running the installer repairs an outdated or broken plugin virtual environment. Settings live outside the checkout and are preserved. If QuickView does not appear, re-run the installer and inspect its output; the action log is available through `herdr plugin log list --plugin sylar.herdr-quickview`.
 
 ## Open QuickView
 
 The plugin does **not** install a keyboard binding automatically. From the terminal pane you want to inspect, invoke its action:
 
 ```sh
-herdr plugin action invoke sylar.herdr-peek.peek
+herdr plugin action invoke sylar.herdr-quickview.quickview
 ```
 
 For a shortcut, add this to your Herdr configuration, using an available key:
@@ -64,14 +63,12 @@ For a shortcut, add this to your Herdr configuration, using an available key:
 [[keys.command]]
 key = "prefix+u"
 type = "plugin_action"
-# Stable QuickView action ID, retained from Herdr Peek for existing shortcuts.
-command = "sylar.herdr-peek.peek"
+command = "sylar.herdr-quickview.quickview"
 description = "Herdr QuickView"
 ```
 
 Validate and reload your Herdr configuration after editing it. `prefix` means your configured Herdr prefix, which is not necessarily Ctrl+B.
 
-Keep `sylar.herdr-peek.peek` exactly as shown: `sylar.herdr-peek` is the registered plugin ID and `peek` is its action ID. The displayed name is Herdr QuickView. The IDs and settings directory retain their original names so existing installations keep working.
 
 ## Use it
 
@@ -119,7 +116,7 @@ Only the selected local static image is decoded, in a cancellable worker with an
 ## Settings
 
 ```sh
-herdr plugin config-dir sylar.herdr-peek
+herdr plugin config-dir sylar.herdr-quickview
 ```
 
 Create or edit `config.toml` in that directory if needed:

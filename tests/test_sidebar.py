@@ -5,22 +5,22 @@ from unittest.mock import patch
 
 from prompt_toolkit.utils import get_cwidth
 
-from herdr_peek.core import PeekError, read_file
-from herdr_peek.i18n import get_language, set_language
-from herdr_peek.links import URLReference
-import test_peek as peek_tests
+from herdr_quickview.core import QuickViewError, read_file
+from herdr_quickview.i18n import get_language, set_language
+from herdr_quickview.links import URLReference
+import test_quickview as quickview_tests
 
 
 class SidebarUITests(unittest.IsolatedAsyncioTestCase):
-    asyncTearDown = peek_tests.PeekUITests.asyncTearDown
-    launch = peek_tests.PeekUITests.launch
-    click = peek_tests.PeekUITests.click
+    asyncTearDown = quickview_tests.QuickViewUITests.asyncTearDown
+    launch = quickview_tests.QuickViewUITests.launch
+    click = quickview_tests.QuickViewUITests.click
 
     async def asyncSetUp(self):
-        await peek_tests.PeekUITests.asyncSetUp(self)
+        await quickview_tests.QuickViewUITests.asyncSetUp(self)
         previous = get_language()
         self.addCleanup(set_language, previous)
-        language = patch('herdr_peek.peek.load_language', return_value='zh')
+        language = patch('herdr_quickview.quickview.load_language', return_value='zh')
         language.start()
         self.addCleanup(language.stop)
         self.other = self.root/'second.py'
@@ -36,9 +36,9 @@ class SidebarUITests(unittest.IsolatedAsyncioTestCase):
         await self.key('1')
 
     async def test_list_reuses_visible_targets_without_preloading_files_or_urls(self):
-        text = f'`{self.file}`\n`{self.file}`\n`{self.other}`\nhttps://example.com/peek'
-        with patch('herdr_peek.peek.read_file', wraps=read_file) as file_read, \
-                patch('herdr_peek.peek.read_url', return_value=('web preview', False)) as web_read:
+        text = f'`{self.file}`\n`{self.file}`\n`{self.other}`\nhttps://example.com/quickview'
+        with patch('herdr_quickview.quickview.read_file', wraps=read_file) as file_read, \
+                patch('herdr_quickview.quickview.read_url', return_value=('web preview', False)) as web_read:
             await self.launch(text=text)
             file_read.assert_not_called()
             web_read.assert_not_called()
@@ -47,14 +47,14 @@ class SidebarUITests(unittest.IsolatedAsyncioTestCase):
             file_read.assert_called_once_with(self.file)
             web_read.assert_not_called()
             await self.key('\x0b')
-            web_read.assert_called_once_with('https://example.com/peek')
-            self.assertEqual(self.ui.current, URLReference('https://example.com/peek'))
+            web_read.assert_called_once_with('https://example.com/quickview')
+            self.assertEqual(self.ui.current, URLReference('https://example.com/quickview'))
             self.assertEqual(self.ui.body.text, 'web preview')
 
     async def test_url_shows_site_and_resource_without_repeating_the_address(self):
         url = 'https://herdr.dev/plugins/'
         await self.launch(text=url, columns=120)
-        with patch('herdr_peek.peek.read_url', return_value=('web preview', False)):
+        with patch('herdr_quickview.quickview.read_url', return_value=('web preview', False)):
             await self.key('1')
         lines = [fragment[1].strip() for fragment in self.ui.sidebar_fragments() if fragment[1] != '\n']
         self.assertEqual(lines, ['▸ https://herdr.dev', '/plugins/'])
@@ -62,7 +62,7 @@ class SidebarUITests(unittest.IsolatedAsyncioTestCase):
     async def test_url_resource_keeps_double_slashes_and_query_fragment_verbatim(self):
         url = 'https://example.com//double/slash?q=%2F#part'
         await self.launch(text=url, columns=180)
-        with patch('herdr_peek.peek.read_url', return_value=('web preview', False)):
+        with patch('herdr_quickview.quickview.read_url', return_value=('web preview', False)):
             await self.key('1')
         lines = [fragment[1].strip() for fragment in self.ui.sidebar_fragments() if fragment[1] != '\n']
         self.assertEqual(lines, ['▸ https://example.com', '//double/slash?q=%2F#part'])
@@ -123,7 +123,7 @@ class SidebarUITests(unittest.IsolatedAsyncioTestCase):
         release = threading.Event()
         await self.launch(text=f'`{self.file}`\nhttps://example.com/slow\n`{self.other}`', columns=120)
         try:
-            with patch('herdr_peek.peek.read_url', side_effect=lambda _: (release.wait(3) and 'old web body', False)):
+            with patch('herdr_quickview.quickview.read_url', side_effect=lambda _: (release.wait(3) and 'old web body', False)):
                 await self.key('1')
                 await self.key('\x0a')
                 self.assertTrue(self.ui.busy)
@@ -226,7 +226,7 @@ class SidebarUITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('final-version.py', visible)
         await self.key('\x01')
         self.assertEqual(self.ui.path.buffer.cursor_position, 0)
-        with patch('herdr_peek.peek.clipboard_write') as copy:
+        with patch('herdr_quickview.quickview.clipboard_write') as copy:
             self.ui.copy_path()
             await asyncio.sleep(.1)
             copy.assert_called_once_with(str(file))
@@ -235,7 +235,7 @@ class SidebarUITests(unittest.IsolatedAsyncioTestCase):
     async def test_long_url_keeps_host_resource_tail_and_full_copy_value(self):
         url = 'https://example.com:8443/' + 'shared-segment/' * 25 + 'report.json?mode=full#L42'
         await self.launch(text=url, columns=100, logical=url)
-        with patch('herdr_peek.peek.read_url', return_value=('web preview', False)) as read:
+        with patch('herdr_quickview.quickview.read_url', return_value=('web preview', False)) as read:
             await self.key('1')
             read.assert_called_once_with(url)
         lines = [fragment[1].strip() for fragment in self.ui.sidebar_fragments() if fragment[1] != '\n']
@@ -244,7 +244,7 @@ class SidebarUITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('…', lines[1])
         self.assertEqual(self.ui.path.text, url)
         self.assertLessEqual(self.ui.path.window.render_info.window_height, 3)
-        with patch('herdr_peek.peek.clipboard_write') as copy:
+        with patch('herdr_quickview.quickview.clipboard_write') as copy:
             self.ui.copy_path()
             await asyncio.sleep(.1)
             copy.assert_called_once_with(url)
@@ -252,7 +252,7 @@ class SidebarUITests(unittest.IsolatedAsyncioTestCase):
     async def test_mixed_list_scroll_and_click_resource_row_open_correct_target(self):
         urls = ['https://example.com/resource-'+str(n) for n in range(12)]
         await self.launch(text='\n'.join([str(self.file), *urls, str(self.other)]), rows=18)
-        with patch('herdr_peek.peek.read_url', return_value=('selected web preview', False)) as read:
+        with patch('herdr_quickview.quickview.read_url', return_value=('selected web preview', False)) as read:
             await self.key('1')
             await self.key('\t'+'\x1b[B'*12)
             read.assert_not_called()
@@ -271,7 +271,7 @@ class SidebarUITests(unittest.IsolatedAsyncioTestCase):
 
     async def test_native_failure_then_sidebar_switch_stays_in_herdr_preview(self):
         await self.launch(native=True, text=f'`{self.file}`\n`{self.other}`')
-        with patch.object(self.ui.native, 'open', side_effect=PeekError('test native failure')) as native:
+        with patch.object(self.ui.native, 'open', side_effect=QuickViewError('test native failure')) as native:
             await self.key('1')
             self.assertEqual(self.ui.current.path, self.file)
             self.assertTrue(self.ui.native_mode)
@@ -288,7 +288,7 @@ class SidebarUITests(unittest.IsolatedAsyncioTestCase):
             file.write_text(str(n))
             files.append(file)
         await self.launch(text='\n'.join(map(str, files)))
-        with patch('herdr_peek.peek.read_file', wraps=read_file) as file_read:
+        with patch('herdr_quickview.quickview.read_file', wraps=read_file) as file_read:
             await self.key('1')
             await self.key('\x1b[<65;5;7M'*30)
             self.assertEqual(self.ui.sidebar_index, 19)
@@ -308,8 +308,8 @@ class SidebarUITests(unittest.IsolatedAsyncioTestCase):
     async def test_rapid_switches_do_not_start_requests_for_intermediate_urls(self):
         text = f'`{self.file}`\nhttps://example.com/one\nhttps://example.com/two\n`{self.other}`'
         await self.launch(text=text, columns=120)
-        with patch('herdr_peek.peek.read_file', wraps=read_file) as file_read, \
-                patch('herdr_peek.peek.read_url') as web_read:
+        with patch('herdr_quickview.quickview.read_file', wraps=read_file) as file_read, \
+                patch('herdr_quickview.quickview.read_url') as web_read:
             await self.key('1')
             for _ in range(3):
                 self.pipe.send_text('\x0a')
@@ -323,7 +323,7 @@ class SidebarUITests(unittest.IsolatedAsyncioTestCase):
 
     async def test_copy_and_open_during_debounce_do_not_use_previous_file(self):
         await self.launch_pair()
-        with patch('herdr_peek.peek.clipboard_write') as copy, patch('herdr_peek.peek.open_default') as opener:
+        with patch('herdr_quickview.quickview.clipboard_write') as copy, patch('herdr_quickview.quickview.open_default') as opener:
             self.pipe.send_text('\x0a')
             await asyncio.sleep(.035)
             self.assertTrue(self.ui.busy)

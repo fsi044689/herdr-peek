@@ -1,4 +1,4 @@
-id = "sylar.herdr-peek"
+id = "sylar.herdr-quickview"
 name = "Herdr QuickView"
 version = "0.1.0"
 min_herdr_version = "0.9.5"
@@ -9,15 +9,15 @@ platforms = ["macos", "linux"]
 command = ["sh", "bootstrap.sh"]
 
 [[actions]]
-id = "peek"
+id = "quickview"
 title = "Herdr QuickView"
 contexts = ["workspace", "pane"]
-command = ["sh", "-c", "exec sh \"$HERDR_PLUGIN_ROOT/launch.sh\" peek"]
+command = ["sh", "-c", "exec sh \"$HERDR_PLUGIN_ROOT/launch.sh\" quickview"]
 
 [[panes]]
-id = "peek"
+id = "quickview"
 title = "Herdr QuickView"
 placement = "popup"
 width = "100%"
 height = "100%"
-command = ["sh", "-c", "exec sh \"$HERDR_PLUGIN_ROOT/launch.sh\" peek-ui"]
+command = ["sh", "-c", "exec sh \"$HERDR_PLUGIN_ROOT/launch.sh\" quickview-ui"]

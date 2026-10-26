@@ -104,7 +104,7 @@ ENGLISH = {
     '无法确认原画面的布局：{error}': 'Cannot determine the original layout: {error}',
     '来源窗格已不在当前画面': 'The source pane is no longer visible',
     '画面与路径位置不一致，请重新打开 Herdr QuickView': 'Screen and path positions do not match; reopen Herdr QuickView',
-    '用法：python3 run.py peek|peek-ui': 'Usage: python3 run.py peek|peek-ui',
+    '用法：python3 run.py quickview|quickview-ui': 'Usage: python3 run.py quickview|quickview-ui',
     '搜索：': 'Search: ',
     '反向搜索：': 'Search backward: ',
     '界面语言已保存。': 'Interface language saved.',

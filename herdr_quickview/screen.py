@@ -12,7 +12,7 @@ from prompt_toolkit.utils import get_cwidth
 
 from .i18n import tr
 
-from .core import PeekError, resolve_path, rpc
+from .core import QuickViewError, resolve_path, rpc
 from .links import url_candidates, url_spans
 
 
@@ -122,7 +122,7 @@ def continued_file_uri(text, start, end, cwd):
                 path, _ = resolve_path(value, cwd)
                 if path.is_file():
                     return text[start:end], end
-            except (PeekError, OSError, ValueError):
+            except (QuickViewError, OSError, ValueError):
                 pass
         continuation = re.match(r'\n[ \t]+(?P<part>\S+)', text[end:])
         if continuation is None:
@@ -134,7 +134,7 @@ def continued_file_uri(text, start, end, cwd):
             path, _ = resolve_path(part, cwd)
             if part.startswith('/') and path.exists():
                 return raw, start + len(raw)
-        except (PeekError, OSError, ValueError):
+        except (QuickViewError, OSError, ValueError):
             pass
         candidate += part
         end += continuation.end()
@@ -191,7 +191,7 @@ def reference_spans(text, cwd):
                     try:
                         path, line = resolve_path(value, cwd)
                         resolved[value] = Reference(path, line) if path.is_file() else None
-                    except (PeekError, OSError, ValueError):
+                    except (QuickViewError, OSError, ValueError):
                         resolved[value] = None
                 if resolved[value] is not None:
                     yield resolved[value], start, start + source_end
@@ -261,7 +261,7 @@ def unwrap_visible(context, pane, rendered):
         }, timeout=2)["text"]
         if align_text(logical, rendered) is not None:
             return logical, ""
-    except PeekError:
+    except QuickViewError:
         pass
     return rendered, tr("折行未能可靠还原；仅标记当前能确认的路径。")
 
@@ -279,14 +279,14 @@ def content_origin(rect, area, ui, count):
 def capture_screen(context):
     layout = rpc("pane.layout", {"pane_id": context.pane_id}, timeout=2)["layout"]
     if layout["focused_pane_id"] != context.pane_id:
-        raise PeekError(tr("活动窗格已变化，请从目标 CLI 重新打开"))
+        raise QuickViewError(tr("活动窗格已变化，请从目标 CLI 重新打开"))
     area = layout["area"]
     config_base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
     config_path = Path(os.environ.get("HERDR_CONFIG_PATH", config_base / "herdr/config.toml"))
     try:
         config = tomllib.loads(config_path.read_text()) if config_path.exists() else {}
     except (OSError, ValueError) as exc:
-        raise PeekError(tr("无法确认原画面的布局：{error}", error=exc)) from exc
+        raise QuickViewError(tr("无法确认原画面的布局：{error}", error=exc)) from exc
     panes = layout["panes"]
     visible = ([{"pane_id": context.pane_id, "rect": area}] if layout["zoomed"] else panes)
     frames, logical, notice = [], "", ""
@@ -302,7 +302,7 @@ def capture_screen(context):
             pane = rpc("pane.get", {"pane_id": context.pane_id}, timeout=2)["pane"]
             logical, notice = unwrap_visible(context, pane, screen_text(ansi))
     if not any(f["source"] for f in frames):
-        raise PeekError(tr("来源窗格已不在当前画面"))
+        raise QuickViewError(tr("来源窗格已不在当前画面"))
     # 100% popup 的边框占两列，Herdr 还固定保留一列 scrollbar gutter。
     return {"frames": frames, "text": logical, "notice": notice,
             "size": [max(0, area["width"] - 3), max(0, area["height"] - 2)]}
@@ -317,7 +317,7 @@ class Screen:
         rendered = screen_text(self.source["ansi"])
         mapping = align_text(snapshot["text"], rendered)
         if mapping is None:
-            raise PeekError(tr("画面与路径位置不一致，请重新打开 Herdr QuickView"))
+            raise QuickViewError(tr("画面与路径位置不一致，请重新打开 Herdr QuickView"))
         for reference, start, end in target_spans(snapshot["text"], cwd):
             positions = [mapping[i] for i in range(start, end) if i in mapping]
             if not positions:

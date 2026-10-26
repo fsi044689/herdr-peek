@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 from prompt_toolkit.utils import get_cwidth
 
-from herdr_peek.core import PeekError, resolve_path
-from herdr_peek.screen import Reference, Screen, reference_spans
+from herdr_quickview.core import QuickViewError, resolve_path
+from herdr_quickview.screen import Reference, Screen, reference_spans
 
 
 class PathMatrixTests(unittest.TestCase):
@@ -195,7 +195,7 @@ class PathMatrixTests(unittest.TestCase):
                 self.assertEqual(list(reference_spans(text, self.root)), [])
         # URL 不能因项目中恰好有同形目录，就被当成本机路径。
         self.file('https:/example.test/data.txt')
-        with self.assertRaises(PeekError):
+        with self.assertRaises(QuickViewError):
             resolve_path('https://example.test/data.txt', self.root)
 
     def test_every_soft_wrap_position_and_ansi_color_maps_to_same_file(self):
