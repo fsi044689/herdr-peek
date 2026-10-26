@@ -324,7 +324,7 @@ class QuickViewUITests(unittest.IsolatedAsyncioTestCase):
         self.pipe.send_text('1')
         await asyncio.sleep(.15)
         rendered = self.ui.app.renderer._last_screen
-        x = next(x for x in range(100) if rendered.data_buffer[0][x].char == '默')
+        x = next(x for x in range(100) if rendered.data_buffer[0][x].char == '应')
         with patch('herdr_quickview.quickview.open_default') as opener:
             await self.click(x, 0)
             opener.assert_called_once_with(self.file)

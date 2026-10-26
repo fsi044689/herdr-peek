@@ -28,7 +28,7 @@ from prompt_toolkit.lexers import DynamicLexer, PygmentsLexer
 from prompt_toolkit.search import start_search, stop_search
 from prompt_toolkit.styles import Style
 from prompt_toolkit.utils import get_cwidth
-from prompt_toolkit.widgets import Button, Label, SearchToolbar, TextArea
+from prompt_toolkit.widgets import Button, SearchToolbar, TextArea
 from pygments.lexers import get_lexer_for_filename
 from pygments.util import ClassNotFound
 
@@ -309,15 +309,14 @@ class QuickViewUI:
             Window(self.sidebar_control, wrap_lines=False, always_hide_cursor=True,
                    right_margins=[ScrollbarMargin(display_arrows=True)]),
         ], width=lambda: max(16, min(34, get_app().output.get_size().columns // 3)))
-        self.open_button = Button(tr("默认应用打开") + " Ctrl+O", handler=self.open_in_default, width=22)
-        self.mode_button = Button(tr("切换预览"), handler=self.toggle_mode, width=14)
-        self.copy_button = Button(tr("复制地址"), handler=self.copy_path, width=14)
-        self.back_button = Button(tr("返回"), handler=self.back, width=9)
+        self.open_button = Button(tr("应用打开") + " Ctrl+O", handler=self.open_in_default, width=18)
+        self.copy_button = Button(tr("复制"), handler=self.copy_path, width=8)
+        self.back_button = Button(tr("返回"), handler=self.back, width=8)
         self.language_button = Button(self.language_label(), handler=self.toggle_language, width=9)
+        self.preview_buttons = [self.open_button, self.copy_button, self.language_button, self.back_button]
         self.preview = HSplit([
-            VSplit([Label(" Herdr QuickView", style="class:title"),
-                    self.open_button, self.mode_button, self.copy_button,
-                    self.language_button, self.back_button], height=1),
+            VSplit([Window(FormattedTextControl(self.preview_title), style="class:title", wrap_lines=False),
+                    *self.preview_buttons], height=1),
             Window(FormattedTextControl(self.preview_navigation), height=1, style="class:status"),
             VSplit([
                 ConditionalContainer(self.sidebar, filter=Condition(lambda: self.sidebar_visible)),
@@ -350,7 +349,7 @@ class QuickViewUI:
             self.native.cancel()
             event.app.exit()
 
-        @keys.add("c-p", filter=~is_searching)
+        @keys.add("c-p", filter=Condition(lambda: self.current is None) & ~is_searching)
         def switch_mode(event):
             self.toggle_mode()
 
@@ -459,6 +458,8 @@ class QuickViewUI:
                                    "hint-badge": "bold bg:#ffd166 fg:#182027",
                                    "hint-border": "fg:#75d9eb",
                                    "sidebar-heading": "bold fg:ansibrightcyan",
+                                   "sidebar-name": "bold",
+                                   "sidebar-directory": "fg:ansibrightblack",
                                    "sidebar-current": "bold bg:#164c60 fg:#effcff",
                                    "sidebar-selected": "reverse bold",
                                    "button.focused": "reverse bold"}), min_redraw_interval=.03)
@@ -482,13 +483,27 @@ class QuickViewUI:
         else:
             self.image_canvas.clear()
 
+    def preview_title(self):
+        if self.current is None:
+            return ""
+        suffix = ""
+        if isinstance(self.current, URLReference):
+            parts = urlsplit(self.current.url)
+            name = parts.netloc + (parts.path if parts.path != '/' else '')
+        else:
+            line = f":{self.current.line}" if self.current.line else ""
+            name = self.current.path.name + line
+            suffix = self.current.path.suffix + line
+        width = max(0, get_app().output.get_size().columns - sum(button.width for button in self.preview_buttons) - 2)
+        return " " + middle_ellipsis(name, width, tail_width=get_cwidth(suffix)) + " " if width else ""
+
     def preview_navigation(self):
         def toggle(event):
             if event.event_type == MouseEventType.MOUSE_UP and event.button == MouseButton.LEFT:
                 self.toggle_sidebar()
             else:
                 return NotImplemented
-        label = tr(" [文件列表 · Ctrl+T] ") if self.sidebar_visible else tr(" [展开列表 · Ctrl+T] ")
+        label = tr(" [列表 Ctrl+T] ") if self.sidebar_visible else tr(" [展开 Ctrl+T] ")
         control = self.app.layout.current_control
         if control == self.sidebar_control:
             help_text = tr(" ↑/↓ 选择 · Enter 打开 · Tab 正文")
@@ -499,9 +514,12 @@ class QuickViewUI:
             if remaining >= 6:
                 help_text = prefix + middle_ellipsis(address, remaining)
         elif control == self.path.control:
-            help_text = tr(" 地址 · Home/End 查看首尾 · Tab 列表/正文")
+            help_text = tr(" 地址 · Home/End 首尾 · Tab 列表") if self.sidebar_visible else tr(" 地址 · Home/End 首尾 · Tab 正文")
         else:
-            help_text = tr(" Ctrl+J/K 切换 · Tab 列表/正文 · 点击地址查看全文")
+            help_text = tr(" Ctrl+J/K 切换 · Tab 列表/正文")
+            extra = tr(" · 点击地址查看全文")
+            if get_cwidth(label + help_text + extra) <= get_app().output.get_size().columns:
+                help_text += extra
         return [("reverse", label, toggle), ("", help_text)]
 
     def toggle_sidebar(self):
@@ -537,10 +555,11 @@ class QuickViewUI:
                     self.open_sidebar(position, focus_list=True)
                 else:
                     return NotImplemented
-            for prefix, text, tail_width in ((f"{'▸' if active else ' '} ", name, get_cwidth(suffix)),
-                                             ("  ", address, 0)):
+            for row, (prefix, text, tail_width) in enumerate(((f"{'▸' if active else ' '} ", name, get_cwidth(suffix)),
+                                                             ("  ", address, 0))):
                 line = prefix + middle_ellipsis(text, width - get_cwidth(prefix), tail_width=tail_width)
-                result.append((style, line + " " * (width - get_cwidth(line)), click))
+                line_style = style or ("class:sidebar-name" if row == 0 else "class:sidebar-directory")
+                result.append((line_style, line + " " * (width - get_cwidth(line)), click))
                 result.append(("", "\n"))
         return result[:-1]
 
@@ -632,16 +651,15 @@ class QuickViewUI:
             self.status = str(exc)
         else:
             set_language(language)
-            self.open_button.text = tr('默认应用打开') + ' Ctrl+O'
-            self.mode_button.text = tr('切换预览')
-            self.copy_button.text = tr('复制地址')
+            self.open_button.text = tr('应用打开') + ' Ctrl+O'
+            self.copy_button.text = tr('复制')
             self.back_button.text = tr('返回')
             self.language_button.text = self.language_label()
             self.status = tr('界面语言已保存。')
         self.app.invalidate()
 
     def toggle_mode(self):
-        if self.busy:
+        if self.busy or self.current is not None:
             return
         if not local_macos():
             self.status = tr("系统 Quick Look 仅支持本机 macOS；当前使用 Herdr 浮窗。")
@@ -652,7 +670,7 @@ class QuickViewUI:
             try:
                 save_mode(mode)
                 self.mode, self.native_mode = mode, mode == 'macos'
-                self.status = tr("已保存：") + (tr("macOS 系统速览") if self.native_mode else tr("Herdr 浮窗")) + tr("；返回原文后，下次选择文件或链接时生效。")
+                self.status = tr("已保存：") + (tr("macOS 系统速览") if self.native_mode else tr("Herdr 浮窗")) + tr("；下次选择文件或链接时生效。")
             except QuickViewError as exc:
                 self.status = str(exc)
         self.app.invalidate()
@@ -766,11 +784,11 @@ class QuickViewUI:
                 'timeout': tr("图片读取超时，已停止解码。"),
             }
             self.body.text = reasons.get(str(exc), tr("图片解码失败或格式不受支持。"))
-            self.status = tr("可用默认应用打开（Ctrl+O） · 复制地址 · Esc 返回")
+            self.status = tr("可用应用打开（Ctrl+O） · 复制 · Esc 返回")
         except (QuickViewError, OSError, asyncio.TimeoutError) as exc:
             reason = str(exc) or tr("网页读取超时")
             self.body.text = tr("此网页暂时无法在 Herdr 内预览。\n\n{reason}" if is_url else "此文件暂时无法在 Herdr 内预览。\n\n{reason}", reason=reason)
-            self.status = notice + tr("可用默认应用打开（Ctrl+O） · 复制地址 · Esc 返回")
+            self.status = notice + tr("可用应用打开（Ctrl+O） · 复制 · Esc 返回")
         self.busy = False
         self.app.invalidate()
 

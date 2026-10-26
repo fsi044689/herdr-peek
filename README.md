@@ -17,7 +17,7 @@ Preview file paths and HTTP(S) links already visible in a Herdr terminal. Select
 | ![Herdr code preview with line numbers, syntax highlighting, and the Open in app Ctrl+O button](docs/screenshots/herdr-preview.png) | ![Actual macOS Quick Look panel previewing the same Python file](docs/screenshots/macos-quicklook.png) |
 | Read code, search with **Ctrl+F**, or explicitly **Open in app / Ctrl+O**. | Preview supported documents using the system panel; **Esc** returns to path selection, ready for the next file. |
 
-These are actual screenshots of Herdr running in Kitty and the native macOS Quick Look panel, using sample files. Terminal colors, transparency and system previews depend on your setup.
+These are actual screenshots of Herdr running in Kitty and the native macOS Quick Look panel, using sample files. The Herdr screenshot shows the earlier toolbar; current previews use a filename title and compact controls. Terminal colors, transparency and system previews depend on your setup.
 
 
 ## Requirements and status
@@ -74,8 +74,8 @@ Validate and reload your Herdr configuration after editing it. `prefix` means yo
 
 1. Bring the desired file path or HTTP(S) URL into view, then open QuickView.
 2. Recognized targets receive a colored highlight and a numbered or lettered badge. **Click the original text/badge, or type its label** to preview immediately. Tab / Shift+Tab and Enter also work.
-3. **Ctrl+P** or the clickable mode label switches between macOS Quick Look and the Herdr popup. The choice is saved and applies when you next select a target in the terminal snapshot. System Quick Look is available only on local macOS with the native helper installed.
-4. In Herdr text preview, **Ctrl+F** searches. Local static PNG, JPEG and WebP files use the same preview area for images. **Open in app / Ctrl+O** hands the file to its system-associated application, or the URL to the default browser. Unsupported formats also offer this button; apps open only on your explicit request.
+3. On the path-selection screen, **Ctrl+P** or the clickable mode label switches between macOS Quick Look and the Herdr popup. The choice is saved and applies when you select a target. Preview-mode selection is available only from this screen. System Quick Look is available only on local macOS with the native helper installed.
+4. In Herdr text preview, **Ctrl+F** searches. Local static PNG, JPEG and WebP files use the same preview area for images. **Open app / Ctrl+O** hands the file to its system-associated application, or the URL to the default browser. **Copy** copies the complete address. Unsupported formats also offer these buttons; apps open only on your explicit request.
 5. **Ctrl+L** or **中文 / English** changes the plugin language and remembers it. English is the default; no OS-language detection is performed.
 6. In Herdr preview, **Esc / q** or **Back** returns to the same path selection so you can preview another file. In macOS Quick Look, close the system panel with Esc, Space, or Cmd+W to return to selection. **Esc / q** from selection exits QuickView; **Ctrl+Q** exits directly from the plugin UI. While searching, the first Esc leaves search.
 
@@ -83,9 +83,9 @@ Herdr preview includes a collapsible **file/link sidebar** on the left. Click an
 
 The sidebar reuses this snapshot's visible targets, deduplicated by file/line or URL. It does not scan a project or preload files. Rapid preview changes wait 120 ms before reading only the final selection. Switching inside Herdr preview stays in Herdr, including after Quick Look fails; use Back to choose another target in the snapshot with the saved macOS mode. Switching does not undo an already-issued Open in app or copy request; it stops feedback from the old preview.
 
-The sidebar shows each file name above its directory, and each URL site above its resource path. Long entries use a middle ellipsis so both ends remain visible. The preview address wraps to at most three rows; click it and use **Home / End** (Fn+← / Fn+→ on Mac) to see its beginning/end; Ctrl+A / Ctrl+E also work when your Herdr prefix does not intercept them. **Copy address** always copies the complete value. Arrow-only selection shows a separate **Selected:** address in the navigation bar; press Enter to preview that item.
+The preview title shows the current filename and referenced line, or a URL's host and resource path. Long titles preserve both ends; the complete address remains below. Compact toolbar buttons fit windows as narrow as 60 columns. The sidebar emphasizes file names and URL sites above their softer directory/resource lines; current and keyboard-selected items keep their distinct highlights. Long entries use a middle ellipsis so both ends remain visible. The preview address wraps to at most three rows; click it and use **Home / End** (Fn+← / Fn+→ on Mac) to see its beginning/end; Ctrl+A / Ctrl+E also work when your Herdr prefix does not intercept them. **Copy** always copies the complete value. Arrow-only selection shows a separate **Selected:** address in the navigation bar when space permits; press Enter to preview that item.
 
-Copy address copies the real complete path or original URL, without terminal display wraps. Number labels use 1–9, 0, then letters; `q` is reserved for closing. With many targets, labels become equal-length multiple-character codes; finish the entire code to select a target, or use Backspace to correct it.
+The **Copy** button copies the real complete path or original URL, without terminal display wraps. Number labels use 1–9, 0, then letters; `q` is reserved for closing. With many targets, labels become equal-length multiple-character codes; finish the entire code to select a target, or use Backspace to correct it.
 
 Code highlighting uses your terminal's ANSI palette and preserves its background. Opening a local file with a line suffix, such as `src/example.py:150`, initially places that line near the center where space permits, accounting for wrapped lines. The referenced line stays bold and underlined when you move the cursor or search; scrolling remains free. Files without a line suffix start at the top without a target marker. This applies to Herdr text preview; macOS Quick Look keeps its system behavior.
 

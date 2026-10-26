@@ -116,12 +116,12 @@ class LanguageUITests(unittest.IsolatedAsyncioTestCase):
 
     async def test_keyboard_switch_is_immediate_persistent_and_keeps_hint_selection(self):
         await self.launch(columns=100)
-        self.assertEqual(self.ui.open_button.text, 'Open in app Ctrl+O')
+        self.assertEqual(self.ui.open_button.text, 'Open app Ctrl+O')
         self.assertEqual(self.ui.language_button.text, '中文')
         self.pipe.send_text('\x0c')
         await asyncio.sleep(.15)
         self.assertEqual(load_language(), 'zh')
-        self.assertEqual(self.ui.open_button.text, '默认应用打开 Ctrl+O')
+        self.assertEqual(self.ui.open_button.text, '应用打开 Ctrl+O')
         self.assertEqual(self.ui.language_button.text, 'English')
         self.assertIn('已保存', self.ui.status)
         self.pipe.send_text('1')
@@ -132,7 +132,7 @@ class LanguageUITests(unittest.IsolatedAsyncioTestCase):
         self.pipe.send_text('\x0c')
         await asyncio.sleep(.15)
         self.assertEqual(load_language(), 'en')
-        self.assertEqual(self.ui.copy_button.text, 'Copy address')
+        self.assertEqual(self.ui.copy_button.text, 'Copy')
         self.assertEqual(self.ui.body.text, self.file.read_text())
 
     async def test_saved_preference_is_loaded_when_reopened(self):
@@ -161,7 +161,8 @@ class LanguageUITests(unittest.IsolatedAsyncioTestCase):
         self.pipe.send_text('1')
         await asyncio.sleep(.15)
         rendered = self.ui.app.renderer._last_screen
-        x = next(x for x in range(100) if rendered.data_buffer[0][x].char == '中')
+        x = next(x for x in range(100) if rendered.data_buffer[0][x].char == '中'
+                 and 'class:button.text' in rendered.data_buffer[0][x].style)
         await self.click(x, 0)
         self.assertEqual(load_language(), 'zh')
         self.pipe.send_text('\x06')
@@ -200,8 +201,8 @@ class LanguageUITests(unittest.IsolatedAsyncioTestCase):
         await self.launch(columns=80)
         self.pipe.send_text('1')
         await asyncio.sleep(.15)
-        for labels in (('Open in app Ctrl+O', 'Preview mode', 'Copy address', '中文', 'Back'),
-                       ('默认应用打开 Ctrl+O', '切换预览', '复制地址', 'English', '返回')):
+        for labels in (('Open app Ctrl+O', 'Copy', '中文', 'Back'),
+                       ('应用打开 Ctrl+O', '复制', 'English', '返回')):
             screen = self.ui.app.renderer._last_screen
             header = ''.join(screen.data_buffer[0][x].char for x in range(80))
             for label in labels:
