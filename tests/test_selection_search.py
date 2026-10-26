@@ -165,11 +165,11 @@ class SelectionSearchUITests(unittest.IsolatedAsyncioTestCase):
             await self.key('1')
             await self.key('\x06absent')
         self.assertIn('Not found', self.status())
-        self.ui.busy = True
+        self.ui.busy = self.ui.loading = True
         self.ui.app.invalidate()
         await asyncio.sleep(.1)
         self.assertNotIn('Not found', self.status())
-        self.ui.busy = False
+        self.ui.busy = self.ui.loading = False
         self.ui.search.search_buffer.text = 'readable'
         self.ui.app.invalidate()
         await asyncio.sleep(.1)

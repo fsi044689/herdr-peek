@@ -242,6 +242,7 @@ class QuickViewUI:
         self.context = context
         self.screen = Screen(snapshot, context.cwd)
         self.current, self.lexer = None, None
+        self.displayed, self.loading = None, False
         self.target_row = self.pending_row = None
         self.status = snapshot["notice"]
         self.index, self.busy, self.native_opened = -1, False, False
@@ -393,7 +394,8 @@ class QuickViewUI:
         def erase_hint(event):
             self.typed = self.typed[:-1]
 
-        @keys.add("c-f", filter=Condition(lambda: self.current is not None and self.image is None))
+        @keys.add("c-f", filter=Condition(lambda: self.current is not None and self.current == self.displayed
+                                         and not self.loading and self.image is None))
         def find(event):
             start_search(self.body.control)
 
@@ -425,6 +427,7 @@ class QuickViewUI:
         def move_sidebar(event):
             step = 1 if event.key_sequence[0].key == "down" else -1
             self.move_sidebar(step)
+            self.open_sidebar(self.sidebar_index, focus_list=True)
 
         @keys.add("enter", filter=preview_active & sidebar_focused)
         def select_sidebar(event):
@@ -487,16 +490,16 @@ class QuickViewUI:
             self.image_canvas.clear()
 
     def preview_title(self):
-        if self.current is None:
+        if self.displayed is None:
             return ""
         suffix = ""
-        if isinstance(self.current, URLReference):
-            parts = urlsplit(self.current.url)
+        if isinstance(self.displayed, URLReference):
+            parts = urlsplit(self.displayed.url)
             name = parts.netloc + (parts.path if parts.path != '/' else '')
         else:
-            line = f":{self.current.line}" if self.current.line else ""
-            name = self.current.path.name + line
-            suffix = self.current.path.suffix + line
+            line = f":{self.displayed.line}" if self.displayed.line else ""
+            name = self.displayed.path.name + line
+            suffix = self.displayed.path.suffix + line
         width = max(0, get_app().output.get_size().columns - sum(button.width for button in self.preview_buttons) - 2)
         return " " + middle_ellipsis(name, width, tail_width=get_cwidth(suffix)) + " " if width else ""
 
@@ -509,13 +512,15 @@ class QuickViewUI:
         label = tr(" [列表 Ctrl+T] ") if self.sidebar_visible else tr(" [展开 Ctrl+T] ")
         control = self.app.layout.current_control
         if control == self.sidebar_control:
-            help_text = tr(" ↑/↓ 选择 · Enter 打开 · Tab 正文")
+            help_text = tr(" ↑/↓ 切换 · Tab 正文")
             reference = self.targets[self.sidebar_index]
-            address = reference.url if isinstance(reference, URLReference) else str(reference.path) + (f":{reference.line}" if reference.line else "")
-            prefix = help_text + tr(" · 选中：")
-            remaining = get_app().output.get_size().columns - get_cwidth(label + prefix)
-            if remaining >= 6:
-                help_text = prefix + middle_ellipsis(address, remaining)
+            if reference != self.current:
+                help_text = tr(" ↑/↓ 切换 · Enter 打开 · Tab 正文")
+                address = reference.url if isinstance(reference, URLReference) else str(reference.path) + (f":{reference.line}" if reference.line else "")
+                prefix = help_text + tr(" · 选中：")
+                remaining = get_app().output.get_size().columns - get_cwidth(label + prefix)
+                if remaining >= 6:
+                    help_text = prefix + middle_ellipsis(address, remaining)
         elif control == self.path.control:
             help_text = tr(" 地址 · Home/End 首尾 · Tab 列表") if self.sidebar_visible else tr(" 地址 · Home/End 首尾 · Tab 正文")
         else:
@@ -526,9 +531,11 @@ class QuickViewUI:
         return [("reverse", label, toggle), ("", help_text)]
 
     def preview_status(self):
+        if self.current != self.displayed and self.busy:
+            return [("", " " + tr("正在切换预览… Esc 返回"))]
         fragments = [("", " ")]
         query = self.search.search_buffer.text
-        if self.app.layout.is_searching and query and not self.busy:
+        if self.app.layout.is_searching and query and not self.loading:
             flags = re.IGNORECASE if self.body.control.search_state.ignore_case() else 0
             if not re.search(re.escape(query), self.body.text, flags):
                 fragments.append(("class:search-missing", tr("未找到") + " · "))
@@ -560,7 +567,7 @@ class QuickViewUI:
                 address = str(parent.relative_to(self.context.cwd)) if parent.is_relative_to(self.context.cwd) else str(parent)
                 if address == '.':
                     address = './'
-            active = reference == self.current
+            active = reference == self.displayed
             focused = self.app.layout.current_control == self.sidebar_control and position == self.sidebar_index
             style = "class:sidebar-selected" if focused else "class:sidebar-current" if active else ""
             def click(event, position=position):
@@ -718,6 +725,7 @@ class QuickViewUI:
         self.image_canvas.clear()
         self.image = None
         self.current, self.lexer = None, None
+        self.displayed, self.loading = None, False
         self.busy, self.native_opened = False, False
         self.typed = ""
         self.native = NativePreview()
@@ -738,9 +746,6 @@ class QuickViewUI:
         if self.current is None and (self.busy or not self.size_matches()):
             return
         from_preview = self.current is not None
-        self.target_row = self.pending_row = None
-        self.image_canvas.clear()
-        self.image = None
         if from_preview:
             self.cancel_preview_tasks()
             self.native.cancel()
@@ -748,13 +753,31 @@ class QuickViewUI:
             self.current = reference
         self.index = self.target_owners[reference]
         self.sidebar_index = self.targets.index(reference)
+        if focus_list and self.sidebar_visible:
+            self.app.layout.focus(self.sidebar_control)
+        if from_preview and reference == self.displayed and not self.loading:
+            self.busy = False
+            self.app.invalidate()
+            return
         self.busy = True
         self.create_preview_task(self.open(reference, focus_list=focus_list, from_preview=from_preview))
 
-    async def open(self, reference, *, focus_list=False, from_preview=False):
+    def display_preview(self, reference, text, *, lexer=None, image=None, line=None, loading=False):
+        was_preview = self.app.layout.current_control == self.preview_control()
         self.target_row = self.pending_row = None
         self.image_canvas.clear()
-        self.image = None
+        self.displayed, self.loading = reference, loading
+        self.path.text = reference.url if isinstance(reference, URLReference) else str(reference.path) + (f":{reference.line}" if reference.line else "")
+        self.lexer, self.image = lexer, image
+        self.body.text = text
+        row = max(0, min((line or 1) - 1, self.body.document.line_count - 1))
+        self.target_row = row if line is not None and 1 <= line <= self.body.document.line_count else None
+        self.pending_row = row if image is None else None
+        self.body.buffer.cursor_position = self.body.document.translate_row_col_to_index(row, 0)
+        if was_preview:
+            self.app.layout.focus(self.preview_control())
+
+    async def open(self, reference, *, focus_list=False, from_preview=False):
         notice = ""
         if self.native_mode and not from_preview:
             native = self.native
@@ -771,36 +794,41 @@ class QuickViewUI:
                 notice = tr("{error}，已改用 Herdr 预览。 ", error=exc)
         self.current = reference
         is_url = isinstance(reference, URLReference)
-        self.path.text = reference.url if is_url else str(reference.path) + (f":{reference.line}" if reference.line else "")
-        self.app.layout.focus(self.sidebar_control if focus_list and self.sidebar_visible else self.body)
-        self.lexer = None
-        self.body.text = tr("正在读取网页… Esc 可取消") if is_url else tr("正在读取文件… Esc 可取消")
+        task = asyncio.current_task()
+        loading_timer = None
+
+        def show_loading():
+            if not from_preview or task in self.preview_tasks:
+                message = tr("正在读取网页… Esc 可取消") if is_url else tr("正在读取文件… Esc 可取消")
+                self.display_preview(reference, message, loading=True)
+                self.status = message
+                self.app.invalidate()
+
+        if not from_preview:
+            show_loading()
+            self.app.layout.focus(self.sidebar_control if focus_list and self.sidebar_visible else self.body)
         try:
             if from_preview:
                 await asyncio.sleep(.12)
+                loading_timer = asyncio.get_running_loop().call_later(.12, show_loading)
+            lexer = None
             if is_url:
                 text, truncated = await asyncio.wait_for(off_thread(lambda: read_url(reference.url)), WEB_TIMEOUT)
             elif await off_thread(lambda: is_image(reference.path)):
-                self.image = await load_image(reference.path)
-                self.body.text = ''
+                image = await load_image(reference.path)
+                self.display_preview(reference, '', image=image)
                 self.status = tr("{kind} · {width} × {height} · 需要兼容图像的终端；空白时 Ctrl+O 默认应用 · Esc 返回",
-                                 kind=self.image.format, width=self.image.width, height=self.image.height)
-                self.app.layout.focus(self.sidebar_control if focus_list and self.sidebar_visible else self.preview_control())
+                                 kind=image.format, width=image.width, height=image.height)
                 self.busy = False
                 self.app.invalidate()
                 return
             else:
                 text, truncated = await off_thread(lambda: read_file(reference.path))
                 try:
-                    self.lexer = PygmentsLexer(type(get_lexer_for_filename(str(reference.path))))
+                    lexer = PygmentsLexer(type(get_lexer_for_filename(str(reference.path))))
                 except ClassNotFound:
-                    self.lexer = None
-            self.body.text = text
-            row = max(0, min(((None if is_url else reference.line) or 1) - 1, self.body.document.line_count - 1))
-            self.target_row = row if (not is_url and reference.line is not None
-                                      and 1 <= reference.line <= self.body.document.line_count) else None
-            self.pending_row = row
-            self.body.buffer.cursor_position = self.body.document.translate_row_col_to_index(row, 0)
+                    pass
+            self.display_preview(reference, text, lexer=lexer, line=None if is_url else reference.line)
             self.status = notice + (tr("仅显示前 2 MiB。 ") if truncated else "") + (
                 tr("网页正文预览；需 JavaScript 或登录的页面可能不完整。Ctrl+F 搜索 · Esc 返回")
                 if is_url else tr("Ctrl+F 搜索 · Esc / q 返回 · Ctrl+Q 退出"))
@@ -811,12 +839,15 @@ class QuickViewUI:
                 'animated': tr("当前仅支持静态 PNG、JPEG 和 WebP 图片。"),
                 'timeout': tr("图片读取超时，已停止解码。"),
             }
-            self.body.text = reasons.get(str(exc), tr("图片解码失败或格式不受支持。"))
+            self.display_preview(reference, reasons.get(str(exc), tr("图片解码失败或格式不受支持。")))
             self.status = tr("可用应用打开（Ctrl+O） · 复制 · Esc 返回")
         except (QuickViewError, OSError, asyncio.TimeoutError) as exc:
             reason = str(exc) or tr("网页读取超时")
-            self.body.text = tr("此网页暂时无法在 Herdr 内预览。\n\n{reason}" if is_url else "此文件暂时无法在 Herdr 内预览。\n\n{reason}", reason=reason)
+            self.display_preview(reference, tr("此网页暂时无法在 Herdr 内预览。\n\n{reason}" if is_url else "此文件暂时无法在 Herdr 内预览。\n\n{reason}", reason=reason))
             self.status = notice + tr("可用应用打开（Ctrl+O） · 复制 · Esc 返回")
+        finally:
+            if loading_timer is not None:
+                loading_timer.cancel()
         self.busy = False
         self.app.invalidate()
 
@@ -841,16 +872,18 @@ class QuickViewUI:
         self.create_preview_task(launch())
 
     def copy_path(self):
-        if self.current is None:
+        if self.displayed is None:
             return
-        reference = self.current
+        reference = self.displayed
         async def copy():
             try:
                 await off_thread(lambda: clipboard_write(reference.url if isinstance(reference, URLReference) else str(reference.path)))
-                self.status = tr("已复制完整链接。") if isinstance(reference, URLReference) else tr("已复制完整路径（不含终端显示折行）。")
+                message = tr("已复制完整链接。") if isinstance(reference, URLReference) else tr("已复制完整路径（不含终端显示折行）。")
             except QuickViewError as exc:
-                self.status = str(exc)
-            self.app.invalidate()
+                message = str(exc)
+            if self.displayed == reference:
+                self.status = message
+                self.app.invalidate()
         self.create_preview_task(copy())
 
 

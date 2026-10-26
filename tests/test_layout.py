@@ -63,7 +63,7 @@ class LayoutUITests(unittest.IsolatedAsyncioTestCase):
                     await self.key('\t')
                     self.assertIs(self.ui.app.layout.current_control, self.ui.sidebar_control)
                 if control == self.ui.sidebar_control:
-                    self.assertIn('Enter', text)
+                    self.assertIn('↑/↓', text)
             self.ui.toggle_sidebar()
             self.ui.app.layout.focus(self.ui.path.control)
             self.ui.app.invalidate()
@@ -126,7 +126,7 @@ class LayoutUITests(unittest.IsolatedAsyncioTestCase):
         attrs = self.ui.app.renderer._attrs_for_style
         self.assertTrue(attrs[fragments[2][0]].bold)
         self.assertEqual(attrs[fragments[3][0]].color, 'ansibrightblack')
-        await self.key('\t\x1b[B')
+        await self.key('\x1b[<65;5;7M')
         fragments = rows()
         self.assertTrue(all(f[0] == 'class:sidebar-current' for f in fragments[:2]))
         self.assertTrue(all(f[0] == 'class:sidebar-selected' for f in fragments[2:]))

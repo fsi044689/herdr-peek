@@ -86,12 +86,13 @@ class SidebarUITests(unittest.IsolatedAsyncioTestCase):
         await self.key('\x14')
         self.assertTrue(self.ui.sidebar_visible)
 
-    async def test_list_arrows_only_select_then_enter_previews_without_moving_focus(self):
+    async def test_list_arrows_preview_directly_and_enter_preserves_focus(self):
         await self.launch_pair()
         await self.key('\t\x1b[B')
         self.assertIs(self.ui.app.layout.current_control, self.ui.sidebar_control)
         self.assertEqual(self.ui.sidebar_index, 1)
-        self.assertEqual(self.ui.current.path, self.file)
+        self.assertEqual(self.ui.current.path, self.other)
+        self.assertEqual(self.ui.body.text, self.other.read_text())
         await self.key('\r')
         self.assertEqual(self.ui.current.path, self.other)
         self.assertIs(self.ui.app.layout.current_control, self.ui.sidebar_control)
@@ -112,6 +113,11 @@ class SidebarUITests(unittest.IsolatedAsyncioTestCase):
         screen = self.ui.app.renderer._last_screen
         row = next(y for y in range(24) if 'second.py' in ''.join(screen.data_buffer[y][x].char for x in range(33)))
         await self.click(7, row)
+        for _ in range(100):
+            if not self.ui.busy:
+                break
+            await asyncio.sleep(.01)
+        self.assertFalse(self.ui.busy)
         self.assertEqual(self.ui.current.path, self.other)
         self.assertEqual(self.ui.body.text, self.other.read_text())
         await self.click(4, 1)
@@ -254,7 +260,7 @@ class SidebarUITests(unittest.IsolatedAsyncioTestCase):
         await self.launch(text='\n'.join([str(self.file), *urls, str(self.other)]), rows=18)
         with patch('herdr_quickview.quickview.read_url', return_value=('selected web preview', False)) as read:
             await self.key('1')
-            await self.key('\t'+'\x1b[B'*12)
+            await self.key('\x1b[<65;5;7M'*12)
             read.assert_not_called()
             self.assertEqual(self.ui.current.path, self.file)
             self.assertEqual(self.ui.sidebar_index, 12)
@@ -321,7 +327,7 @@ class SidebarUITests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual([call.args[0] for call in file_read.call_args_list], [self.file, self.other])
             self.assertFalse(self.ui.busy)
 
-    async def test_copy_and_open_during_debounce_do_not_use_previous_file(self):
+    async def test_copy_during_debounce_uses_displayed_file_and_open_waits(self):
         await self.launch_pair()
         with patch('herdr_quickview.quickview.clipboard_write') as copy, patch('herdr_quickview.quickview.open_default') as opener:
             self.pipe.send_text('\x0a')
@@ -330,7 +336,7 @@ class SidebarUITests(unittest.IsolatedAsyncioTestCase):
             self.ui.copy_path()
             self.pipe.send_text('\x0f')
             await asyncio.sleep(.04)
-            copy.assert_called_once_with(str(self.other))
+            copy.assert_called_once_with(str(self.file))
             opener.assert_not_called()
             await asyncio.sleep(.2)
             await self.key('\x0f')
