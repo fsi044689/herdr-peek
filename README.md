@@ -23,7 +23,7 @@ These are actual screenshots of Herdr running in Kitty and the native macOS Quic
 ## Requirements and status
 
 - Herdr **0.9.5+**, Python **3.11+**, macOS or Linux.
-- Version **0.1.1**, beta version. Local macOS testing is complete for the cases described below; Linux desktop and physical-client shortcut acceptance are still pending.
+- Version **0.1.0**, initial beta version. Local macOS testing is complete for the cases described below; Linux desktop and physical-client shortcut acceptance are still pending.
 - Installation needs network access for Python dependencies. macOS Quick Look needs Xcode Command Line Tools to build its small native host; without build tools, Herdr text preview remains available.
 
 ## Install
