@@ -68,7 +68,7 @@ ENGLISH = {
     ' 地址 · Home/End 查看首尾 · Tab 列表/正文': ' Address · Home/End start/end · Tab list/preview',
     ' Ctrl+J/K 切换 · Tab 列表/正文 · 点击地址查看全文': ' Ctrl+J/K next/prev · Tab list/preview · Click address for full text',
     '正在读取文件… Esc 可取消': 'Loading file… Esc to cancel',
-    '{kind} · {width} × {height} · 不支持高清图像时显示缩略图 · Ctrl+O 默认应用 · Esc 返回': '{kind} · {width} × {height} · Thumbnail when full images are unavailable · Ctrl+O open in app · Esc back',
+    '{kind} · {width} × {height} · 需要兼容图像的终端；空白时 Ctrl+O 默认应用 · Esc 返回': '{kind} · {width} × {height} · Images require a compatible terminal; if blank, Ctrl+O open in app · Esc back',
     '图片文件超过 32 MiB，未解码。': 'Image exceeds 32 MiB; decoding was skipped.',
     '图片尺寸超过安全预览上限，未解码。': 'Image dimensions exceed the safe preview limit; decoding was skipped.',
     '当前仅支持静态 PNG、JPEG 和 WebP 图片。': 'Only static PNG, JPEG and WebP images are supported.',

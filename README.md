@@ -14,10 +14,10 @@ Preview file paths and HTTP(S) links already visible in a Herdr terminal. Select
 
 | Stay inside Herdr | Use native macOS Quick Look |
 | --- | --- |
-| ![Herdr code preview with line numbers, syntax highlighting, and the Open in app Ctrl+O button](docs/screenshots/herdr-preview.png) | ![Actual macOS Quick Look panel rendering a sample local HTML document](docs/screenshots/macos-quicklook.png) |
+| ![Herdr code preview with line numbers, syntax highlighting, and the Open in app Ctrl+O button](docs/screenshots/herdr-preview.png) | ![Actual macOS Quick Look panel previewing the same Python file](docs/screenshots/macos-quicklook.png) |
 | Read code, search with **Ctrl+F**, or explicitly **Open in app / Ctrl+O**. | Preview supported documents using the system panel; **Esc** returns to path selection, ready for the next file. |
 
-The terminal images are exported from QuickView's real UI renderer with sample CLI output; the Quick Look image is a native macOS window screenshot. Terminal colors and system previews depend on your setup.
+These are actual screenshots of Herdr running in Kitty and the native macOS Quick Look panel, using sample files. Terminal colors, transparency and system previews depend on your setup.
 
 
 ## Requirements and status
@@ -93,13 +93,13 @@ Copy address copies the real complete path or original URL, without terminal dis
 | --- | --- | --- |
 | UTF-8 text, source code, JSON | System preview, subject to installed extensions | Text, line numbers, syntax highlighting |
 | Markdown, local HTML, SVG | System-rendered content where supported | Source text |
-| Local static PNG, JPEG, WebP | System preview where supported | Image (character thumbnail when cell size is unavailable) |
+| Local static PNG, JPEG, WebP | System preview where supported | Image; requires a compatible terminal |
 | Animated images, PDF, ZIP, other binary data | Depends on the system and its Quick Look extensions | Explicit unsupported-format message, with Open in app available |
 | HTTP(S) pages | Verified locally on macOS 26.2; not guaranteed on other versions | Extracted title, readable text and links; also plain text and JSON |
 
 Text and web preview read at most 2 MiB. Web preview has an 8-second UI deadline; it does not run JavaScript, share browser login state, or render images/PDFs. A ready system panel confirms visibility and focus, **not** successful page loading. Apple's Quick Look item API documents file URLs, so online URL preview is treated as version-dependent behavior.
 
-Images use [Herdr's supported Kitty graphics protocol](https://herdr.dev/docs/configuration/#kitty-graphics), without running Kitty or requiring `icat`. A color-character thumbnail is always drawn underneath, intended to retain a preview on clients without image support; that client fallback still needs visual acceptance. High-resolution display also requires usable terminal cell dimensions; if those are unavailable, only the thumbnail is drawn. The current Herdr 0.9.5 production popup reports no cell pixel dimensions on the tested machine, so this implementation currently uses the character thumbnail there. A user confirmed the PNG character thumbnail in the production popup on local macOS with Kitty. High-resolution popup rendering and fallback on other clients remain unverified. PNG/JPEG/WebP decoding uses Pillow, installed into the plugin's own environment.
+Images use [Herdr's supported Kitty graphics protocol](https://herdr.dev/docs/configuration/#kitty-graphics), without running Kitty or requiring `icat`. The decoded PNG is sent directly, without conversion to colored text characters or requiring terminal cell pixel dimensions. A compatible terminal is required; if the image area stays blank, use **Ctrl+O** to open the file in its default application. The user confirmed clear image display in the production popup on local macOS with Kitty and Herdr 0.9.5. Other terminals and Linux desktop rendering remain unverified. PNG/JPEG/WebP decoding uses Pillow, installed into the plugin's own environment.
 
 Only the selected local static image is decoded, in a cancellable worker with an 8-second deadline. Files are limited to 32 MiB; PNG/WebP to 16 million pixels. JPEG permits originals up to 100 million pixels, using reduced decoding and a 16-million-pixel decoded limit. Previews have a maximum edge of 1200 pixels; orientation and transparency are handled before display. Switching targets stops the old worker and removes QuickView's own image; returning or exiting also removes it. Image URLs are not automatically downloaded. PDFs, Office documents, archives, audio and video are outside the in-terminal image feature.
 
@@ -135,7 +135,7 @@ Changes from the UI preserve other fields, comments and configuration symlinks. 
 .venv/bin/python -m pip check
 ```
 
-The suite covers path/URL recognition, local HTTP fixtures, native handshake/failure simulation, settings, shell startup checks, real prompt_toolkit input-pipe/mouse sequences, isolated image decoding, cancellation, resource limits, and image cleanup. Native file previews were additionally inspected on macOS 26.2 with synthetic samples; installed Quick Look extensions affect results. Image protocol responses were checked in a real Herdr PTY; this does not establish visual correctness on each client.
+The suite covers path/URL recognition, local HTTP fixtures, native handshake/failure simulation, settings, shell startup checks, real prompt_toolkit input-pipe/mouse sequences, isolated image decoding, cancellation, resource limits, and image cleanup. Native file previews were additionally inspected on macOS 26.2 with synthetic samples; installed Quick Look extensions affect results. Image protocol responses were checked in a real Herdr PTY. The user also accepted the direct-PNG image preview in the production popup on local macOS with Kitty; this does not establish visual correctness on other clients.
 
 A clean Python 3.11 source build and the primary Python 3.14 environment are checked separately. Platform mocks and input-pipe tests do not establish Linux desktop behavior, actual Herdr-client key delivery, or default-app rendering. Those acceptance checks remain explicit release gaps. See [the Chinese notes](README.zh-CN.md) for the detailed prior acceptance matrix.
 

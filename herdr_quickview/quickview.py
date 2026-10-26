@@ -20,7 +20,6 @@ from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.application import get_app
 from prompt_toolkit.layout import ConditionalContainer, DynamicContainer, Float, FloatContainer, HSplit, Layout, VSplit, Window
 from prompt_toolkit.layout.controls import FormattedTextControl, UIContent, UIControl
-from prompt_toolkit.formatted_text.utils import split_lines
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.layout.margins import ScrollbarMargin
 from prompt_toolkit.mouse_events import MouseButton, MouseEventType
@@ -38,7 +37,7 @@ from .core import QuickViewError, Context, cli, clipboard_write, open_default, r
 from .screen import HINT_KEYS, Screen, capture_screen, hint_grid, hint_labels
 from .links import URLReference, WEB_TIMEOUT, read_url
 from .settings import load_language, load_mode, local_macos, save_language, save_mode
-from .images import ImageCanvas, ImageError, cell_pixels, is_image, load_image
+from .images import ImageCanvas, ImageError, is_image, load_image
 
 
 def off_thread(fn):
@@ -175,18 +174,12 @@ class SidebarControl(FormattedTextControl):
 
 
 class ImageControl(UIControl):
-    def __init__(self, window):
-        self.window = window
-
     def is_focusable(self):
         return True
 
     def create_content(self, width, height):
-        window = self.window
-        window.pixels = cell_pixels(window.ui.app.output)
-        window.rendered = window.ui.image.render(width, height or 1, window.pixels)
-        lines = list(split_lines(window.rendered.fragments))
-        return UIContent(get_line=lambda i: lines[i], line_count=len(lines), show_cursor=False)
+        return UIContent(get_line=lambda i: [('', ' ' * width)],
+                         line_count=max(1, height), show_cursor=False)
 
     def mouse_handler(self, event):
         if event.event_type == MouseEventType.MOUSE_UP and event.button == MouseButton.LEFT:
@@ -196,12 +189,9 @@ class ImageControl(UIControl):
 
 
 class ImageWindow(Window):
-    def __init__(self, ui):
-        self.ui = ui
+    def __init__(self):
         self.position = None
-        self.rendered = None
-        self.pixels = None
-        super().__init__(ImageControl(self), wrap_lines=False, always_hide_cursor=True)
+        super().__init__(ImageControl(), wrap_lines=False, always_hide_cursor=True)
 
     def write_to_screen(self, screen, mouse_handlers, write_position, parent_style, erase_bg, z_index):
         self.position = write_position
@@ -259,7 +249,7 @@ class QuickViewUI:
                              lexer=DynamicLexer(lambda: self.lexer))
         self.path = TextArea(read_only=True, height=Dimension(min=1, max=3), wrap_lines=True,
                              dont_extend_height=True, focus_on_click=True)
-        self.image_window = ImageWindow(self)
+        self.image_window = ImageWindow()
         self.control = FormattedTextControl(self.fragments, focusable=True, show_cursor=False)
         self.canvas = Window(self.control, wrap_lines=False, always_hide_cursor=True)
         self.grid = self.screen.cells(*snapshot["size"])
@@ -427,8 +417,8 @@ class QuickViewUI:
         position = self.image_window.position
         if app.is_done:
             self.image_canvas.close()
-        elif self.image and position and self.image_window.pixels:
-            self.image_canvas.show(self.image_window.rendered, position.xpos, position.ypos,
+        elif self.image and position:
+            self.image_canvas.show(self.image, position.xpos, position.ypos,
                                    position.width, position.height)
         else:
             self.image_canvas.clear()
@@ -685,7 +675,7 @@ class QuickViewUI:
             elif await off_thread(lambda: is_image(reference.path)):
                 self.image = await load_image(reference.path)
                 self.body.text = ''
-                self.status = tr("{kind} · {width} × {height} · 不支持高清图像时显示缩略图 · Ctrl+O 默认应用 · Esc 返回",
+                self.status = tr("{kind} · {width} × {height} · 需要兼容图像的终端；空白时 Ctrl+O 默认应用 · Esc 返回",
                                  kind=self.image.format, width=self.image.width, height=self.image.height)
                 self.app.layout.focus(self.sidebar_control if focus_list and self.sidebar_visible else self.preview_control())
                 self.busy = False

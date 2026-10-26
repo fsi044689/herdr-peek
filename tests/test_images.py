@@ -12,9 +12,14 @@ from unittest.mock import patch
 from PIL import Image, features
 from prompt_toolkit.output import DummyOutput
 
-from herdr_quickview.images import (BACKGROUND, MAX_IMAGE_BYTES, ImageCanvas, ImageError,
-                               ImagePreview, cell_pixels, decode_file, is_image, load_image)
+from herdr_quickview.images import (MAX_IMAGE_BYTES, ImageCanvas, ImageError,
+                               decode_file, is_image, load_image)
 import test_quickview as quickview_tests
+
+
+def decoded_pixels(preview):
+    with Image.open(io.BytesIO(preview.png)) as image:
+        return image.copy()
 
 
 class ImageTests(unittest.IsolatedAsyncioTestCase):
@@ -33,31 +38,31 @@ class ImageTests(unittest.IsolatedAsyncioTestCase):
             with patch.dict(os.environ, {'PATH': ''}):
                 preview = await load_image(path)
             self.assertEqual((preview.width, preview.height, preview.format), (1600, 800, kind))
-            self.assertEqual(preview.pixels.size, (1200, 600))
+            self.assertEqual(decoded_pixels(preview).size, (1200, 600))
 
     async def test_transparency_and_exif_orientation(self):
         path = self.root/'alpha.png'
         Image.new('RGBA', (20, 10), (255, 0, 0, 0)).save(path)
         preview = await load_image(path)
-        self.assertEqual(preview.pixels.getpixel((0, 0)), (32, 36, 43))
+        self.assertEqual(decoded_pixels(preview).getpixel((0, 0)), (32, 36, 43))
         path = self.root/'rotated.jpg'
         exif = Image.Exif()
         exif[274] = 6
         Image.new('RGB', (80, 40), 'red').save(path, exif=exif)
         preview = await load_image(path)
-        self.assertEqual(preview.pixels.size, (40, 80))
+        self.assertEqual(decoded_pixels(preview).size, (40, 80))
         self.assertEqual((preview.width, preview.height), (40, 80))
         path = self.root/'gray16.png'
         Image.new('I;16', (20, 10), 32896).save(path)
         preview = await load_image(path)
-        self.assertEqual(preview.pixels.getpixel((0, 0)), (128, 128, 128))
+        self.assertEqual(decoded_pixels(preview).getpixel((0, 0)), (128, 128, 128))
 
     async def test_large_jpeg_uses_reduced_decode_and_nonfiles_are_not_opened(self):
         path = self.root/'photo.jpg'
         Image.new('RGB', (6000, 4000), 'red').save(path)
         preview = await load_image(path)
         self.assertEqual((preview.width, preview.height), (6000, 4000))
-        self.assertEqual(preview.pixels.size, (1200, 800))
+        self.assertEqual(decoded_pixels(preview).size, (1200, 800))
         self.assertFalse(is_image(self.root))
         if hasattr(os, 'mkfifo'):
             path = self.root/'pipe.png'
@@ -145,21 +150,21 @@ from herdr_quickview.quickview import QuickViewUI
                 with self.assertRaises(ProcessLookupError):
                     os.kill(pid, 0)
 
-    def test_same_canvas_drives_thumbnail_and_graphics_and_is_cached(self):
+    async def test_worker_png_is_uploaded_without_resampling(self):
         path = self.root/'sample.png'
-        Image.new('RGB', (100, 60), 'red').save(path)
-        result = decode_file(path)
-        preview = ImagePreview(base64.b64decode(result['png']), 100, 60, 'PNG')
-        rendered = preview.render(30, 10, (8, 15))
-        self.assertIs(preview.render(30, 10, (8, 15)), rendered)
-        with Image.open(io.BytesIO(rendered.png)) as image:
-            self.assertAlmostEqual(image.width / image.height, 240 / 150, delta=.02)
-            self.assertEqual(image.width, 100)
-        lines = ''.join(fragment[1] for fragment in rendered.fragments).splitlines()
-        self.assertEqual(len(lines), 10)
-        self.assertTrue(all(len(line) == 30 for line in lines))
-        self.assertIsNot(preview.render(20, 10, None), rendered)
-        self.assertIsNone(cell_pixels(DummyOutput()))
+        Image.new('RGB', (900, 300), 'red').save(path)
+        preview = await load_image(path)
+        output = DummyOutput()
+        commands = []
+        output.write_raw = commands.append
+        canvas = ImageCanvas(output)
+        self.addCleanup(canvas.close)
+        canvas.show(preview, 5, 3, 40, 12)
+        payload = ''.join(command.split(';', 1)[1][:-2] for command in commands
+                          if 'm=' in command)
+        self.assertEqual(base64.b64decode(payload), preview.png)
+        with Image.open(io.BytesIO(preview.png)) as image:
+            self.assertEqual(image.size, (900, 300))
 
     def test_graphics_owns_one_id_and_reuploads_after_public_erase_screen(self):
         output = DummyOutput()
@@ -207,16 +212,16 @@ class ImageUITests(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(.02)
         self.fail(self.ui.body.text)
 
-    async def test_portable_thumbnail_navigation_copy_and_back(self):
+    async def test_graphics_without_cell_dimensions_navigation_copy_and_back(self):
         await self.launch(text=f'"{self.picture}"\n"{self.file}"', columns=100)
         self.ui.app.ttimeoutlen = .01
         self.pipe.send_text('1')
         await self.wait_image()
         self.assertIs(self.ui.app.layout.current_control, self.ui.image_window.content)
-        self.assertIsNone(self.ui.image_canvas.image_id)
+        self.assertIsNotNone(self.ui.image_canvas.image_id)
         screen = self.ui.app.renderer._last_screen
         visible = ''.join(screen.data_buffer[y][x].char for y in range(24) for x in range(100))
-        self.assertIn('▀', visible)
+        self.assertNotIn('▀', visible)
         self.pipe.send_text('\x06')
         await asyncio.sleep(.05)
         self.assertIs(self.ui.app.layout.current_control, self.ui.image_window.content)
@@ -241,35 +246,38 @@ class ImageUITests(unittest.IsolatedAsyncioTestCase):
 
     async def test_graphics_moves_with_sidebar_reuploads_on_clear_and_cleans_exit(self):
         commands = []
-        with patch('herdr_quickview.quickview.cell_pixels', return_value=(8, 15)):
-            await self.launch(text=f'"{self.picture}"\n"{self.file}"', columns=100)
-            self.output.write_raw = commands.append
-            self.pipe.send_text('1')
-            await self.wait_image()
-            self.assertIsNotNone(self.ui.image_canvas.image_id)
-            self.assertTrue(any('a=t,' in command for command in commands))
-            before = self.ui.image_window.position
-            self.pipe.send_text('\x14')
-            await asyncio.sleep(.15)
-            after = self.ui.image_window.position
-            self.assertLess(after.xpos, before.xpos)
-            self.output.erase_screen()
-            count = sum('a=t,' in command for command in commands)
-            self.ui.app.invalidate()
-            await asyncio.sleep(.1)
-            self.assertEqual(sum('a=t,' in command for command in commands), count+1)
-            deletes = sum('a=d,' in command for command in commands)
-            self.pipe.send_text('\x0a')
-            await asyncio.sleep(.25)
-            self.assertIsNone(self.ui.image)
-            self.assertGreater(sum('a=d,' in command for command in commands), deletes)
-            self.pipe.send_text('\x0b')
-            await self.wait_image()
-            self.pipe.send_text('\x11')
-            await asyncio.sleep(.15)
-            self.assertTrue(self.task.done())
-            self.assertIsNone(self.ui.image_canvas.image_id)
-            self.assertTrue(any('a=d,d=I,i=' in command for command in commands))
+        await self.launch(text=f'"{self.picture}"\n"{self.file}"', columns=100)
+        self.output.write_raw = commands.append
+        self.pipe.send_text('1')
+        await self.wait_image()
+        self.assertIsNotNone(self.ui.image_canvas.image_id)
+        self.assertTrue(any('a=t,' in command for command in commands))
+        before = self.ui.image_window.position
+        upload_count = sum('a=t,' in command for command in commands)
+        self.pipe.send_text('\x14')
+        await asyncio.sleep(.15)
+        after = self.ui.image_window.position
+        self.assertLess(after.xpos, before.xpos)
+        self.assertEqual(sum('a=t,' in command for command in commands), upload_count)
+        placement = next(command for command in reversed(commands) if 'a=p,' in command)
+        self.assertIn(f'c={after.width},r={after.height},', placement)
+        self.output.erase_screen()
+        count = sum('a=t,' in command for command in commands)
+        self.ui.app.invalidate()
+        await asyncio.sleep(.1)
+        self.assertEqual(sum('a=t,' in command for command in commands), count+1)
+        deletes = sum('a=d,' in command for command in commands)
+        self.pipe.send_text('\x0a')
+        await asyncio.sleep(.25)
+        self.assertIsNone(self.ui.image)
+        self.assertGreater(sum('a=d,' in command for command in commands), deletes)
+        self.pipe.send_text('\x0b')
+        await self.wait_image()
+        self.pipe.send_text('\x11')
+        await asyncio.sleep(.15)
+        self.assertTrue(self.task.done())
+        self.assertIsNone(self.ui.image_canvas.image_id)
+        self.assertTrue(any('a=d,d=I,i=' in command for command in commands))
 
     async def test_switch_cancels_image_decode_and_never_installs_stale_result(self):
         started, stopped = asyncio.Event(), asyncio.Event()

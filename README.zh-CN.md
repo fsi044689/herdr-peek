@@ -13,10 +13,10 @@
 
 | 直接在 Herdr 里看 | 使用 macOS 系统 Quick Look |
 | --- | --- |
-| ![Herdr 内代码预览，显示行号、语法高亮和默认应用打开 Ctrl+O 按钮](docs/screenshots/herdr-preview.png) | ![真实 macOS Quick Look 窗口正在渲染本地 HTML 示例文档](docs/screenshots/macos-quicklook.png) |
+| ![Herdr 内代码预览，显示行号、语法高亮和默认应用打开 Ctrl+O 按钮](docs/screenshots/herdr-preview.png) | ![真实 macOS Quick Look 窗口正在预览同一个 Python 文件](docs/screenshots/macos-quicklook.png) |
 | 阅读代码、**Ctrl+F** 搜索，或按 **Ctrl+O** 用默认应用打开。 | 使用系统面板预览支持的文档，**Esc** 返回路径选择，继续查看下一个文件。 |
 
-终端示例图由 QuickView 的真实界面渲染器配合示例 CLI 输出导出；Quick Look 图为真实 macOS 窗口截图。终端配色及系统预览效果随本机配置而异。
+这些是 Kitty 中运行 Herdr 和 macOS 原生 Quick Look 面板的真实截图，使用示例文件演示。终端配色、透明背景及系统预览效果随本机配置而异。
 
 ## 怎么用
 
@@ -88,11 +88,11 @@ preview_mode = "macos" # 或 "herdr"
 
 直接在原来的右侧预览区查看图片，沿用侧栏、Ctrl+J/K 切换、Ctrl+T 折叠、Ctrl+O 默认应用和 Esc 返回，不增加新的入口。图片页不启用文本搜索。
 
-使用 [Herdr 官方支持的 Kitty 图像协议](https://herdr.dev/docs/configuration/#kitty-graphics)，不调用 Kitty，也不要求安装 `icat`。底层同时绘制彩色字符缩略图，预期不支持图像的客户端仍能查看缩略图，此回退仍待实机验收；拿不到终端单元格尺寸时也仅显示缩略图。本机 Herdr 0.9.5 正式 popup 入口没有提供单元格像素尺寸，当前实现因此在该入口使用字符缩略图。用户已在本机 macOS＋Kitty 的正式 popup 入口确认 PNG 字符缩略图可见；高清 popup 绘图及其他客户端的回退仍未验证，不能保证所有终端都能显示高清图片。图片解码依赖 Pillow，随插件安装到独立 `.venv`。
+使用 [Herdr 官方支持的 Kitty 图像协议](https://herdr.dev/docs/configuration/#kitty-graphics)，不调用 Kitty，也不要求安装 `icat`。直接传输解码后的 PNG，不转换成彩色字符，也不依赖终端提供单元格像素尺寸。需要兼容图像的终端；如果图片区域空白，可按 **Ctrl+O** 用默认应用打开文件。用户已在本机 macOS＋Kitty＋Herdr 0.9.5 的正式 popup 中确认图片显示清晰、效果正常；其他终端及 Linux 桌面显示仍未实测。图片解码依赖 Pillow，随插件安装到独立 `.venv`。
 
 仅解码当前选中的本地静态图片，不自动下载 URL 图片。解码在可取消的独立进程中执行，8 秒超时；源文件最多 32 MiB。PNG/WebP 最多 1600 万像素；JPEG 原图最多 1 亿像素，先使用缩略解码，再限制解码尺寸为 1600 万像素。预览最长边为 1200 像素，处理 EXIF 方向和透明背景；动画不播放。切换目标会停止旧任务并删除插件自己的图片，返回和退出时同样清理，不清除其他程序的图片。
 
-已用真实 Herdr PTY 验证协议应答，并以输入管道验证缩略图、切换、擦屏恢复和退出清理；这不等于各客户端的实机视觉验收。
+协议接收应答不等于客户端已显示图片；传输、切换、擦屏恢复和退出清理由自动化验证。本轮直接 PNG 预览已由用户在上述本机环境实测接受，这不代表其他客户端也已通过视觉验收。
 
 侧栏中文件显示“文件名＋所在目录”，URL 显示“站点＋页面路径”。长文本从中间省略，保留首尾。右侧地址最多换行显示三行，点击地址后可按 **Home / End**（Mac 可按 Fn+← / Fn+→）查看开头/末尾；Herdr 前缀不拦截时也可用 Ctrl+A / Ctrl+E；“复制地址”始终复制完整值。列表仅用方向键选中时，导航行单独显示“选中”地址；按 Enter 才切换预览。
 

@@ -5,7 +5,6 @@ import base64
 import io
 import json
 import secrets
-import struct
 import sys
 import warnings
 from dataclasses import dataclass
@@ -30,19 +29,6 @@ def is_image(path):
         header = stream.read(12)
     return (header.startswith(b'\x89PNG\r\n\x1a\n') or header.startswith(b'\xff\xd8\xff')
             or (header[:4] == b'RIFF' and header[8:12] == b'WEBP'))
-
-
-def cell_pixels(output):
-    try:
-        import fcntl
-        import termios
-        rows, columns, width, height = struct.unpack(
-            'HHHH', fcntl.ioctl(output.fileno(), termios.TIOCGWINSZ, b'\0' * 8))
-        if rows and columns and width and height:
-            return width / columns, height / rows
-    except (ImportError, OSError, ValueError, NotImplementedError):
-        pass
-    return None
 
 
 def decode_file(path):
@@ -104,7 +90,7 @@ async def load_image(path):
             result = json.loads(output)
             if 'error' in result:
                 raise ImageError(result['error'])
-            return ImagePreview(base64.b64decode(result['png']), result['width'], result['height'], result['format'])
+            return ImagePreview(base64.b64decode(result['png'], validate=True), result['width'], result['height'], result['format'])
         except (ValueError, KeyError, TypeError, OSError) as exc:
             raise ImageError('decode') from exc
     finally:
@@ -122,51 +108,6 @@ class ImagePreview:
     width: int
     height: int
     format: str
-
-    def __post_init__(self):
-        from PIL import Image
-
-        with Image.open(io.BytesIO(self.png)) as image:
-            self.pixels = image.convert('RGB')
-        self._rendered = None
-        self._size = None
-
-    def render(self, columns, rows, pixels=None):
-        from PIL import Image
-
-        columns, rows = max(1, columns), max(1, rows)
-        size = columns, rows, pixels
-        if size != self._size:
-            cell_width, cell_height = pixels or (1, 2)
-            aspect = columns * cell_width / (rows * cell_height)
-            width = max(self.pixels.width, self.pixels.height * aspect)
-            height = max(self.pixels.height, self.pixels.width / aspect)
-            scale = min(1, PREVIEW_EDGE / max(width, height))
-            canvas = Image.new('RGB', (max(1, round(width * scale)), max(1, round(height * scale))), BACKGROUND)
-            image = self.pixels.copy()
-            image.thumbnail(canvas.size)
-            canvas.paste(image, ((canvas.width-image.width)//2, (canvas.height-image.height)//2))
-            output = io.BytesIO()
-            canvas.save(output, format='PNG')
-            thumbnail = canvas.resize((columns, rows * 2))
-            values = thumbnail.load()
-            fragments = []
-            for y in range(0, thumbnail.height, 2):
-                for x in range(thumbnail.width):
-                    top = '#%02x%02x%02x' % values[x, y]
-                    bottom = '#%02x%02x%02x' % values[x, y+1]
-                    fragments.append((f'fg:{top} bg:{bottom}', '▀'))
-                fragments.append(('', '\n'))
-            self._rendered = RenderedImage(output.getvalue(), fragments[:-1])
-            self._size = size
-        return self._rendered
-
-
-@dataclass
-class RenderedImage:
-    png: bytes
-    fragments: list
-
 
 class ImageCanvas:
     def __init__(self, output):
