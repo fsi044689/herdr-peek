@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import selectors
 import subprocess
 import sys
@@ -325,7 +326,7 @@ class QuickViewUI:
                 HSplit([self.path, DynamicContainer(lambda: self.image_window if self.image else self.body),
                         ConditionalContainer(self.search, filter=Condition(lambda: self.image is None))]),
             ]),
-            Window(FormattedTextControl(lambda: " " + self.status), height=1, style="class:status"),
+            Window(FormattedTextControl(self.preview_status), height=1, style="class:status"),
         ])
         footer_row = self.footer_row()
         self.selection = FloatContainer(self.canvas, floats=[Float(
@@ -366,6 +367,7 @@ class QuickViewUI:
         def cycle(event):
             if self.selectable and self.size_matches():
                 self.typed = ""
+                self.status = self.screen.snapshot["notice"]
                 step = -1 if event.key_sequence[0].key == "s-tab" else 1
                 position = self.selectable.index(self.index) if self.index in self.selectable else (-1 if step > 0 else 0)
                 self.index = self.selectable[(position + step) % len(self.selectable)]
@@ -452,6 +454,7 @@ class QuickViewUI:
                                    "pygments.error": "underline fg:ansired",
                                    "quickview.target": "bold underline",
                                    "title": "bold fg:ansibrightcyan", "status": "fg:ansibrightcyan",
+                                   "search-missing": "bold fg:ansired",
                                    "hint-path": "bold bg:#164c60 fg:#effcff",
                                    "hint-current": "bold bg:#c9f3ef fg:#102f36",
                                    "hint-muted": "bg:#233a42 fg:#899fa6",
@@ -522,6 +525,16 @@ class QuickViewUI:
                 help_text += extra
         return [("reverse", label, toggle), ("", help_text)]
 
+    def preview_status(self):
+        fragments = [("", " ")]
+        query = self.search.search_buffer.text
+        if self.app.layout.is_searching and query and not self.busy:
+            flags = re.IGNORECASE if self.body.control.search_state.ignore_case() else 0
+            if not re.search(re.escape(query), self.body.text, flags):
+                fragments.append(("class:search-missing", tr("未找到") + " · "))
+        fragments.append(("", self.status))
+        return fragments
+
     def toggle_sidebar(self):
         self.sidebar_visible = not self.sidebar_visible
         if not self.sidebar_visible and self.app.layout.current_control == self.sidebar_control:
@@ -591,27 +604,42 @@ class QuickViewUI:
         elif not self.selectable:
             message = tr("当前画面未找到文件或 HTTP(S) 链接。Esc 返回，滚到可见区域后重试。")
         else:
-            message = tr("Herdr QuickView · 点击 / 输入编号直达 · Tab / Enter · Esc 取消 · {count} 处", count=len(self.selectable))
-            if self.typed:
-                message += tr(" · 已输入 {keys}", keys=self.typed)
-        if self.status and not self.busy and same_size:
-            message = self.status + " · " + message
-        mode = tr("macOS 系统") if self.native_mode else tr("Herdr 浮窗")
+            message = ""
+        mode = "macOS" if self.native_mode else "Herdr"
         def switch(event):
             if event.event_type == MouseEventType.MOUSE_UP and event.button == MouseButton.LEFT:
                 self.toggle_mode()
         def switch_language(event):
             if event.event_type == MouseEventType.MOUSE_UP and event.button == MouseButton.LEFT:
                 self.toggle_language()
-        fragments = [("reverse", tr(" [{mode} · Ctrl+P] ", mode=mode), switch),
-                     ("reverse", f" [{self.language_label()} · Ctrl+L] ", switch_language)]
-        if self.index in self.selectable and not self.busy and same_size:
-            reference = self.screen.hits[self.index]
-            address = reference.url if isinstance(reference, URLReference) else str(reference.path)
-            if not self.status:
-                message = address + " · " + message
+        fragments = [("reverse", f" [{mode} Ctrl+P]", switch),
+                     ("reverse", f" [{self.language_label()} Ctrl+L] ", switch_language)]
+        available = max(0, get_app().output.get_size().columns - sum(get_cwidth(f[1]) for f in fragments))
+        if same_size and not self.busy and self.selectable:
+            parts = [tr("已输入 {keys}", keys=self.typed)] if self.typed else []
+            if self.status:
+                parts.append(self.status)
+            if self.index in self.selectable:
+                reference = self.screen.hits[self.index]
+                line = f":{reference.line}" if not isinstance(reference, URLReference) and reference.line else ""
+                address = reference.url if isinstance(reference, URLReference) else str(reference.path) + line
+                tail_width = 0 if isinstance(reference, URLReference) else get_cwidth(reference.path.name + line)
+                remaining = available - get_cwidth(" · ".join(parts)) - (3 if parts else 0)
+                if remaining > 0:
+                    parts.append(middle_ellipsis(address, remaining, tail_width=tail_width))
+                hints = [tr("Esc 退出"), tr("{count} 处", count=len(self.selectable)), "Tab / Enter"]
             else:
-                message = self.status + " · " + address
+                hints = [tr("点击 / 输入编号"), tr("Esc 退出"), tr("{count} 处", count=len(self.selectable)), "Tab / Enter"]
+            for hint in hints:
+                if get_cwidth(" · ".join(parts + [hint])) <= available:
+                    parts.append(hint)
+            message = " · ".join(parts)
+        elif self.status and not self.busy and same_size:
+            message = self.status + " · " + message
+        if get_cwidth(message) > available:
+            while message and get_cwidth(message) > max(0, available - 1):
+                message = message[:-1]
+            message += "…" if available else ""
         fragments.append(("reverse", message))
         return fragments
 
