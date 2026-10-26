@@ -44,7 +44,10 @@ class StartupTests(unittest.TestCase):
         python.write_text('#!/bin/sh\nexit 1\n')
         python.chmod(0o755)
         candidate = self.root/'python3.11'
-        candidate.write_text('#!/bin/sh\n[ "$1" = -c ] && exit 0\necho selected-python-3.11 >&2\nexit 23\n')
+        candidate.write_text('#!/bin/sh\n[ "$1" = -I ] && shift\n'
+                             'if [ "$1" = -c ]; then\n'
+                             '  case "$2" in *realpath*) echo "$0";; esac\n'
+                             '  exit 0\nfi\necho selected-python-3.11 >&2\nexit 23\n')
         candidate.chmod(0o755)
         shutil.copy2(ROOT/'bootstrap.sh', self.root/'bootstrap.sh')
         env = {**os.environ, 'PATH': str(self.root)+':/usr/bin:/bin'}
@@ -53,6 +56,22 @@ class StartupTests(unittest.TestCase):
                                 env=env, capture_output=True, text=True, timeout=3)
         self.assertEqual(result.returncode, 23)
         self.assertIn('selected-python-3.11', result.stderr)
+
+    def test_installer_uses_resolved_interpreter_to_create_virtualenv(self):
+        python = self.root/'real python'
+        python.write_text('#!/bin/sh\n[ "$1" = -I ] && shift\n'
+                          'if [ "$1" = -c ]; then\n'
+                          '  case "$2" in *realpath*) printf "%s\\n" "${0%/*}/real python";; esac\n'
+                          '  exit 0\nfi\nprintf "%s\\n" "$0" >&2\nexit 23\n')
+        python.chmod(0o755)
+        link = self.root/'python-link'
+        link.symlink_to(python)
+        shutil.copy2(ROOT/'bootstrap.sh', self.root/'bootstrap.sh')
+        result = subprocess.run(['sh', str(self.root/'bootstrap.sh')], cwd=self.root,
+                                env={**os.environ, 'PYTHON': str(link)},
+                                capture_output=True, text=True, timeout=3)
+        self.assertEqual(result.returncode, 23)
+        self.assertEqual(result.stderr.strip(), str(python))
 
     def test_launch_without_virtualenv_explains_how_to_install(self):
         result = subprocess.run(['sh', str(ROOT/'launch.sh'), 'quickview'], cwd=self.root,

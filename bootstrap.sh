@@ -15,6 +15,7 @@ if [ -z "$python" ] || ! "$python" -c 'import sys; sys.exit(sys.version_info < (
     echo 'Herdr QuickView requires Python 3.11+. Install it, then retry; or run PYTHON=python3.11 sh bootstrap.sh.' >&2
     exit 1
 fi
+python=$("$python" -I -c 'import os, sys; print(os.path.realpath(sys.executable))')
 if [ -d .venv ] && { [ ! -x .venv/bin/python ] || ! .venv/bin/python -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null; }; then
     "$python" -m venv --clear .venv
 else
